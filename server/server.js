@@ -8,7 +8,7 @@ async function startServer(overrides = {}) {
 
 async function runServeCli(overrides = {}) {
   const app = await startServer(overrides);
-  console.log(`agent-one server listening at http://${app.host}:${app.port}`);
+  console.log(`agent-one server listening at ${app.browserUrl}`);
   return app;
 }
 

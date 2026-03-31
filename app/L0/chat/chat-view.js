@@ -4,6 +4,7 @@ import { marked } from "./marked.esm.js";
 
 const EXECUTION_STATUS_LINE_PATTERN = /^execution\s+(.+)$/i;
 const EXECUTION_PRINT_LINE_PATTERN = /^(log|info|warn|error|debug|dir|table|assert):\s*/i;
+const STICKY_SCROLL_THRESHOLD = 32;
 const markdownRenderer = new marked.Renderer();
 
 markdownRenderer.code = ({ lang, text }) => {
@@ -423,6 +424,7 @@ function createTerminalCard({ executeDisplay, isConversationBusy, isStreaming, m
 
   const inputBody = document.createElement("div");
   inputBody.className = "terminal-pane-scroll";
+  inputBody.dataset.scrollKey = `${messageId}:input`;
 
   executeDisplay.blocks.forEach((block) => {
     const inputBlock = document.createElement("pre");
@@ -442,6 +444,7 @@ function createTerminalCard({ executeDisplay, isConversationBusy, isStreaming, m
 
   const outputBody = document.createElement("div");
   outputBody.className = "terminal-pane-scroll";
+  outputBody.dataset.scrollKey = `${messageId}:output`;
   appendTerminalOutput(outputBody, displayOutputResults || [], pendingState);
 
   outputPane.append(outputLabel, outputBody);
@@ -541,7 +544,7 @@ function createAssistantSequenceBubble(group, options = {}) {
   return bubble;
 }
 
-function createStandaloneExecutionOutputBubble(outputResults) {
+function createStandaloneExecutionOutputBubble(outputResults, messageId = "") {
   const bubble = document.createElement("article");
   bubble.className = "message-bubble is-terminal-output";
 
@@ -556,6 +559,9 @@ function createStandaloneExecutionOutputBubble(outputResults) {
   outputLabel.textContent = "Output";
   const outputBody = document.createElement("div");
   outputBody.className = "terminal-pane-scroll";
+  if (messageId) {
+    outputBody.dataset.scrollKey = `${messageId}:output`;
+  }
   appendTerminalOutput(outputBody, outputResults);
   outputPane.append(outputLabel, outputBody);
 
@@ -566,6 +572,70 @@ function createStandaloneExecutionOutputBubble(outputResults) {
 
 function getDocumentScroller() {
   return document.scrollingElement || document.documentElement;
+}
+
+function getMaxScrollTop(element) {
+  return Math.max(0, element.scrollHeight - element.clientHeight);
+}
+
+function getMaxScrollLeft(element) {
+  return Math.max(0, element.scrollWidth - element.clientWidth);
+}
+
+function isNearBottom(element) {
+  return getMaxScrollTop(element) - element.scrollTop <= STICKY_SCROLL_THRESHOLD;
+}
+
+function createScrollSnapshot(element, options = {}) {
+  if (!element) {
+    return null;
+  }
+
+  return {
+    scrollLeft: element.scrollLeft,
+    scrollTop: element.scrollTop,
+    stickyBottom: options.forcePreserve === true ? false : isNearBottom(element)
+  };
+}
+
+function restoreScrollSnapshot(element, snapshot, options = {}) {
+  if (!element || !snapshot) {
+    return;
+  }
+
+  element.scrollLeft = Math.min(snapshot.scrollLeft, getMaxScrollLeft(element));
+
+  if (options.forcePreserve === true || !snapshot.stickyBottom) {
+    element.scrollTop = Math.min(snapshot.scrollTop, getMaxScrollTop(element));
+    return;
+  }
+
+  element.scrollTop = getMaxScrollTop(element);
+}
+
+function captureThreadScrollSnapshots(thread, options = {}) {
+  const snapshots = {
+    document: createScrollSnapshot(getDocumentScroller(), {
+      forcePreserve: options.preserveScroll === true
+    }),
+    nodes: new Map()
+  };
+
+  thread.querySelectorAll("[data-scroll-key]").forEach((element) => {
+    snapshots.nodes.set(element.dataset.scrollKey, createScrollSnapshot(element));
+  });
+
+  return snapshots;
+}
+
+function restoreThreadScrollSnapshots(thread, snapshots, options = {}) {
+  restoreScrollSnapshot(getDocumentScroller(), snapshots?.document, {
+    forcePreserve: options.preserveScroll === true
+  });
+
+  thread.querySelectorAll("[data-scroll-key]").forEach((element) => {
+    restoreScrollSnapshot(element, snapshots?.nodes.get(element.dataset.scrollKey));
+  });
 }
 
 function buildMessageDisplayGroups(history, options = {}) {
@@ -628,6 +698,7 @@ function buildMessageDisplayGroups(history, options = {}) {
 
     if (standaloneOutputResults) {
       groups.push({
+        messageId: message.id,
         outputResults: standaloneOutputResults,
         type: "standalone-output"
       });
@@ -648,11 +719,7 @@ export function renderMessages(thread, history, options = {}) {
     return;
   }
 
-  const scroller = getDocumentScroller();
-  const shouldPreserveScroll = options.preserveScroll === true;
-  const previousBottomOffset = shouldPreserveScroll
-    ? Math.max(0, scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop)
-    : 0;
+  const scrollSnapshots = captureThreadScrollSnapshots(thread, options);
 
   thread.innerHTML = "";
   thread.classList.remove("is-empty");
@@ -664,6 +731,9 @@ export function renderMessages(thread, history, options = {}) {
       "This is Agent One, a client-side personal agent. It runs and executes code directly in your browser. Your data and settings are stored in the browser's localStorage for convenience.";
     thread.classList.add("is-empty");
     thread.append(emptyState);
+    window.requestAnimationFrame(() => {
+      restoreThreadScrollSnapshots(thread, scrollSnapshots, options);
+    });
     return;
   }
 
@@ -675,7 +745,7 @@ export function renderMessages(thread, history, options = {}) {
       row.append(createAssistantSequenceBubble(group, options));
     } else if (group.type === "standalone-output") {
       row.className = "message-row assistant terminal-row execution-output-row";
-      row.append(createStandaloneExecutionOutputBubble(group.outputResults));
+      row.append(createStandaloneExecutionOutputBubble(group.outputResults, group.messageId));
     } else {
       row.className = `message-row ${group.message.role}`;
       row.append(createStandardMessageBubble(group.message));
@@ -685,12 +755,7 @@ export function renderMessages(thread, history, options = {}) {
   });
 
   window.requestAnimationFrame(() => {
-    if (shouldPreserveScroll) {
-      scroller.scrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight - previousBottomOffset);
-      return;
-    }
-
-    scroller.scrollTop = scroller.scrollHeight;
+    restoreThreadScrollSnapshots(thread, scrollSnapshots, options);
   });
 }
 

@@ -41,6 +41,7 @@ node A1.js serve
 ```
 
 The web server binds to `0.0.0.0` by default so container hosts like Render can detect the open port.
+The CLI prints a browser-friendly local URL such as `http://127.0.0.1:3000`.
 For a local-only bind, pass `--host 127.0.0.1`.
 
 ## Optional Packaging Toolchain

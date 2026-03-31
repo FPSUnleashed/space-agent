@@ -56,6 +56,6 @@ export async function execute(context) {
   const overrides = parseServeArgs(context.args);
   const server = await startServer(overrides);
 
-  console.log(`agent-one server listening at http://${server.host}:${server.port}`);
+  console.log(`agent-one server listening at ${server.browserUrl}`);
   return 0;
 }

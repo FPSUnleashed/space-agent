@@ -4,10 +4,19 @@ const { loadApiRegistry } = require("./api-registry");
 const { sendJson } = require("./http/handlers");
 const { createRequestHandler } = require("./http/router");
 
+function resolveBrowserHost(host) {
+  if (host === "0.0.0.0" || host === "::" || host === "[::]") {
+    return "127.0.0.1";
+  }
+
+  return host;
+}
+
 function createAgentServer(overrides = {}) {
   const apiDir = overrides.apiDir || API_DIR;
   const appDir = overrides.appDir || APP_DIR;
   const host = overrides.host || DEFAULT_HOST;
+  const browserHost = overrides.browserHost || resolveBrowserHost(host);
   const port = Number(overrides.port || DEFAULT_PORT);
   const assetDir = overrides.assetDir || ASSET_DIR;
   const apiRegistry = loadApiRegistry(apiDir);
@@ -39,16 +48,28 @@ function createAgentServer(overrides = {}) {
     apiDir,
     apiRegistry,
     appDir,
+    browserHost,
     host,
     port,
     assetDir,
     server,
+    browserUrl: `http://${browserHost}:${port}`,
     listen() {
       return new Promise((resolve, reject) => {
         server.once("error", reject);
         server.listen(port, host, () => {
           server.removeListener("error", reject);
-          resolve({ apiDir, apiRegistry, appDir, host, port, assetDir, server });
+          resolve({
+            apiDir,
+            apiRegistry,
+            appDir,
+            browserHost,
+            host,
+            port,
+            assetDir,
+            server,
+            browserUrl: `http://${browserHost}:${port}`
+          });
         });
       });
     }
