@@ -16,18 +16,31 @@ const MIME_TYPES = {
   ".xhtml": "application/xhtml+xml; charset=utf-8"
 };
 
-function sendJson(res, statusCode, payload) {
+function sendRedirect(res, location, headers = {}) {
+  res.writeHead(302, {
+    ...headers,
+    Location: location
+  });
+  res.end();
+}
+
+function sendJson(res, statusCode, payload, headers = {}) {
   const body = JSON.stringify(payload, null, 2);
   res.writeHead(statusCode, {
+    ...headers,
     "Content-Type": "application/json; charset=utf-8",
     "Content-Length": Buffer.byteLength(body)
   });
   res.end(body);
 }
 
+function sendNotFound(res, headers = {}) {
+  sendJson(res, 404, { error: "File not found" }, headers);
+}
+
 function sendFile(res, filePath, options = {}) {
   if (options.knownMissing) {
-    sendJson(res, 404, { error: "File not found" });
+    sendNotFound(res, options.headers);
     return;
   }
 
@@ -36,11 +49,12 @@ function sendFile(res, filePath, options = {}) {
 
   fs.readFile(filePath, (err, data) => {
     if (err) {
-      sendJson(res, 404, { error: "File not found" });
+      sendNotFound(res, options.headers);
       return;
     }
 
     res.writeHead(200, {
+      ...(options.headers || {}),
       "Content-Type": contentType,
       "Content-Length": data.length
     });
@@ -187,4 +201,4 @@ async function sendApiResult(res, result) {
   sendJson(res, 200, result);
 }
 
-export { sendApiResult, sendFile, sendJson };
+export { sendApiResult, sendFile, sendJson, sendNotFound, sendRedirect };

@@ -7,12 +7,14 @@ import {
   DEFAULT_HOST,
   DEFAULT_PORT,
   FILE_WATCH_CONFIG_PATH,
+  PAGES_DIR,
   PROJECT_ROOT
 } from "./config.js";
 import { loadApiRegistry } from "./lib/api/registry.js";
+import { createAuthService } from "./lib/auth/service.js";
 import { createWatchdog } from "./lib/file-watch/watchdog.js";
-import { sendJson } from "./proxy/handlers.js";
-import { createRequestHandler } from "./proxy/router.js";
+import { sendJson } from "./router/responses.js";
+import { createRequestHandler } from "./router/router.js";
 
 function resolveBrowserHost(host) {
   if (host === "0.0.0.0" || host === "::" || host === "[::]") {
@@ -29,6 +31,7 @@ async function createAgentServer(overrides = {}) {
   const browserHost = overrides.browserHost || resolveBrowserHost(host);
   const port = Number(overrides.port || DEFAULT_PORT);
   const assetDir = overrides.assetDir || ASSET_DIR;
+  const pagesDir = overrides.pagesDir || PAGES_DIR;
   const projectRoot = overrides.projectRoot || PROJECT_ROOT;
   const watchdog =
     overrides.watchdog ||
@@ -36,13 +39,16 @@ async function createAgentServer(overrides = {}) {
       configPath: overrides.fileWatchConfigPath || FILE_WATCH_CONFIG_PATH,
       projectRoot
     });
+  const auth = overrides.auth || createAuthService({ projectRoot, watchdog });
 
   const apiRegistry = await loadApiRegistry(apiDir);
   const requestHandler = createRequestHandler({
     apiDir,
     apiRegistry,
     appDir,
+    auth,
     assetDir,
+    pagesDir,
     watchdog,
     host,
     port,
@@ -72,6 +78,8 @@ async function createAgentServer(overrides = {}) {
     host,
     port,
     assetDir,
+    pagesDir,
+    auth,
     watchdog,
     server,
     browserUrl: `http://${browserHost}:${port}`,
@@ -90,6 +98,8 @@ async function createAgentServer(overrides = {}) {
             host,
             port,
             assetDir,
+            pagesDir,
+            auth,
             watchdog,
             server,
             browserUrl: `http://${browserHost}:${port}`

@@ -13,13 +13,13 @@ The browser app is the primary runtime. The Node.js side exists as thin infrastr
 
 Documentation quality is one of the most important parts of this project. Without high-quality agent docs, agents go rogue and architecture drifts. Treat these files as part of the runtime, not as optional notes.
 
-This repository must keep exactly three agent documentation files:
+This repository keeps three primary agent documentation files:
 
 - `/AGENTS.md`
 - `/app/AGENTS.md`
 - `/server/AGENTS.md`
 
-Do not add more `AGENTS.md` files under `commands/`, `packaging/`, or other subdirectories unless the project explicitly changes that rule.
+Subtree-local `AGENTS.md` files may also exist when they carry scoped guidance for a specific area such as CLI commands. Keep them aligned with the primary docs instead of treating them as a separate competing documentation system.
 
 ## Programming Guide
 
@@ -52,7 +52,7 @@ Top-level structure:
 - `A1.js`: root CLI router that discovers command modules dynamically
 - `commands/`: CLI command modules such as `serve`, `help`, `version`, and `update`
 - `app/`: browser runtime, layered customware model, shared frontend modules, and browser test surfaces
-- `server/`: thin local infrastructure runtime, API host, fetch proxy, watched-file indexes, and Git support code for update flows
+- `server/`: thin local infrastructure runtime, with root page shells under `server/pages/`, request routing under `server/router/`, API hosting, fetch proxying, watched-file indexes, auth/session infrastructure, and Git support code for update flows
 - `packaging/`: optional Electron host and packaging scripts; keep native hosts thin
 
 Project concepts:
@@ -62,7 +62,10 @@ Project concepts:
 - browser modules are namespaced as `mod/<author>/<repo>/...`
 - the layered browser model is `app/L0` firmware, `app/L1` group customware, and `app/L2` user customware
 - `app/L1` and `app/L2` are transient runtime state and are gitignored; do not treat them as durable repo-owned sample content
-- the server resolves `/mod/...` requests through that layered inheritance model
+- `app/L2/<username>/user.yaml` stores the user's login verifier under a `password:` object, and `app/L2/<username>/logins.json` stores active session codes
+- the server resolves `/mod/...` requests through that layered inheritance model using watchdog-backed indexes
+- the browser now authenticates through the server at `/login`, uses a server-issued session cookie for both API and file access, and clears that session through `/logout`
+- non-`/api` and non-`/mod` browser entry routes are served from `server/pages/`; `/login` is public and the protected page shells live behind the router-side session gate
 - the server-side backend under `server/` is expected to use ES module syntax throughout
 - detailed browser-runtime rules live in `/app/AGENTS.md`
 - detailed server-runtime rules live in `/server/AGENTS.md`
@@ -75,6 +78,11 @@ Supported CLI surface:
 - `node A1.js --help`
 - `node A1.js version`
 - `node A1.js --version`
+- `node A1.js user create`
+- `node A1.js user password`
+- `node A1.js group create`
+- `node A1.js group add`
+- `node A1.js group remove`
 
 Development and packaging surface:
 
@@ -95,14 +103,15 @@ Documentation ownership:
 - `/AGENTS.md` owns repo-wide rules, project identity, top-level structure, CLI surface, packaging surface, and documentation policy
 - `/app/AGENTS.md` owns browser-runtime architecture, layer rules, frontend patterns, and app-specific current state
 - `/server/AGENTS.md` owns server responsibilities, API contracts, watched-file/customware infrastructure, and server-specific current state
+- subtree-local `AGENTS.md` files may document narrower implementation areas when they stay consistent with the primary docs
 
 Documentation rules:
 
 - keep app-specific details in `/app/AGENTS.md`, not in the root file
 - keep server-specific details in `/server/AGENTS.md`, not in the root file
 - do not duplicate detailed app or server information in `/AGENTS.md`; keep root high level and point to the owning file
-- do not create extra AGENTS files for `commands/`, `packaging/`, or other subtrees; fold that information into the root file unless the policy changes
-- do not create parallel `README.md` or `readme.md` files for architecture or agent guidance; keep durable project documentation in the three AGENTS files
+- when subtree-local `AGENTS.md` files exist, keep them scoped, concise, and consistent with the root/app/server docs
+- do not create parallel `README.md` or `readme.md` files for architecture or agent guidance; keep durable project documentation in the AGENTS files rather than split README architecture notes
 - after every edit session, review whether architecture, folder layout, commands, API contracts, loader behavior, watcher behavior, extension points, or conventions changed
 - if they changed, update the relevant `AGENTS.md` files in the same session before finishing
 - if a change affects both app and server, update both local docs and update the root file if the top-level contract changed

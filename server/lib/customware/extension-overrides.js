@@ -1,4 +1,4 @@
-import { globToRegExp, normalizePathSegment } from "../app-files.js";
+import { globToRegExp, normalizePathSegment } from "../utils/app-files.js";
 import { parseProjectModuleExtensionFilePath } from "./layout.js";
 import { collectAccessibleModuleEntries, selectOverrideEntries } from "./overrides.js";
 

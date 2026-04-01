@@ -1,8 +1,20 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 
-import { normalizePathSegment } from "./app-files.js";
+import { normalizePathSegment } from "../lib/utils/app-files.js";
 
 const requestContextStorage = new AsyncLocalStorage();
+
+function createAnonymousRequestUser(overrides = {}) {
+  return {
+    isAuthenticated: false,
+    session: null,
+    sessionToken: "",
+    shouldClearSessionCookie: false,
+    source: "anonymous",
+    username: "",
+    ...overrides
+  };
+}
 
 function normalizePrincipalId(value) {
   const normalized = normalizePathSegment(value);
@@ -41,33 +53,33 @@ function parseCookieHeader(cookieHeader) {
   return cookies;
 }
 
-function resolveRequestUser(headers) {
+function resolveRequestUser(headers, auth) {
   const cookies = parseCookieHeader(headers && headers.cookie);
-  const rawUsername = String(cookies.username || "");
-  // TODO: Replace this trusted cookie shortcut with real authentication and authorization.
-  const username = normalizePrincipalId(rawUsername);
+  const user = auth && typeof auth.resolveUserFromCookies === "function"
+    ? auth.resolveUserFromCookies(cookies)
+    : createAnonymousRequestUser();
 
   return {
     cookies,
-    user: {
-      username,
-      rawUsername,
-      isAuthenticated: Boolean(username),
-      source: username ? "trusted-username-cookie" : "anonymous"
-    }
+    user
   };
 }
 
-function createRequestContext({ req, requestUrl } = {}) {
-  const { cookies, user } = resolveRequestUser(req && req.headers);
+function createRequestContext({ auth, req, requestUrl } = {}) {
+  const { cookies, user } = resolveRequestUser(req && req.headers, auth);
 
   return {
+    auth,
     cookies,
     req,
     requestUrl,
     user
   };
 }
+
+// TODO: Replace this request auth bootstrap with the future real identity system,
+// including guest users, stronger session lifecycle handling, and API/file auth policies
+// derived from durable identities rather than the current local login flow.
 
 function runWithRequestContext(requestContext, callback) {
   return requestContextStorage.run(requestContext, callback);
@@ -84,19 +96,25 @@ function getRequestUser() {
     return context.user;
   }
 
-  return {
-    username: "",
-    rawUsername: "",
-    isAuthenticated: false,
-    source: "anonymous"
-  };
+  return createAnonymousRequestUser();
+}
+
+function ensureAuthenticatedRequestContext(requestContext) {
+  const user = requestContext && requestContext.user ? requestContext.user : getRequestUser();
+
+  if (!user || !user.isAuthenticated || !normalizePrincipalId(user.username)) {
+    const error = new Error("Authentication required.");
+    error.statusCode = 401;
+    throw error;
+  }
+
+  return user;
 }
 
 export {
   createRequestContext,
+  ensureAuthenticatedRequestContext,
   getRequestContext,
   getRequestUser,
-  normalizePrincipalId,
-  parseCookieHeader,
   runWithRequestContext
 };

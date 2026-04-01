@@ -1,0 +1,203 @@
+import { URL } from "node:url";
+
+import {
+  createRequestContext,
+  ensureAuthenticatedRequestContext,
+  runWithRequestContext
+} from "./request-context.js";
+import { handlePageRequest } from "./pages-handler.js";
+import { proxyExternalRequest } from "./proxy.js";
+import { sendApiResult, sendJson } from "./responses.js";
+import { applyApiCorsHeaders, handleApiPreflight } from "./cors.js";
+import { handleModuleRequest } from "./mod-handler.js";
+import { readParsedRequestBody } from "./request-body.js";
+
+function createParamsObject(searchParams) {
+  const params = Object.create(null);
+
+  for (const [key, value] of searchParams.entries()) {
+    if (params[key] === undefined) {
+      params[key] = value;
+      continue;
+    }
+
+    if (Array.isArray(params[key])) {
+      params[key].push(value);
+      continue;
+    }
+
+    params[key] = [params[key], value];
+  }
+
+  return params;
+}
+
+function resolveApiModule(apiRegistry, pathname) {
+  const match = pathname.match(/^\/api\/([a-z0-9_-]+)$/i);
+  if (!match) {
+    return null;
+  }
+
+  return apiRegistry.get(match[1]) || null;
+}
+
+function getAllowedMethods(apiModule) {
+  return Object.keys(apiModule.handlers)
+    .map((method) => method.toUpperCase())
+    .sort();
+}
+
+async function handleApiModuleRequest(req, res, requestUrl, apiModule, contextOptions) {
+  const methodName = String(req.method || "GET").toUpperCase();
+  const handler = apiModule.handlers[methodName.toLowerCase()];
+
+  applyApiCorsHeaders(res);
+
+  if (!handler) {
+    sendJson(
+      res,
+      405,
+      {
+        error: `Method ${methodName} is not supported for ${apiModule.endpointName}`
+      },
+      {
+        Allow: getAllowedMethods(apiModule).join(", "),
+      }
+    );
+    return;
+  }
+
+  let parsedRequest;
+
+  try {
+    parsedRequest = await readParsedRequestBody(req);
+  } catch (error) {
+    sendJson(res, 400, {
+      error: `Invalid request body: ${error.message}`
+    });
+    return;
+  }
+
+  const params = createParamsObject(requestUrl.searchParams);
+  let result;
+
+  try {
+    result = await handler({
+      ...contextOptions,
+      body: parsedRequest.body,
+      endpointName: apiModule.endpointName,
+      headers: req.headers,
+      method: methodName,
+      params,
+      query: params,
+      rawBody: parsedRequest.rawBody,
+      req,
+      requestContext: contextOptions.requestContext,
+      requestUrl,
+      res
+    });
+  } catch (error) {
+    const statusCode = Number(error && error.statusCode) || 500;
+    sendJson(res, statusCode, {
+      error: statusCode >= 500 ? "Internal server error" : error.message
+    });
+    return;
+  }
+
+  await sendApiResult(res, result);
+}
+
+function sendUnauthorized(res, requestContext, auth) {
+  sendJson(
+    res,
+    401,
+    {
+      error: "Authentication required"
+    },
+    requestContext?.user?.shouldClearSessionCookie &&
+      auth &&
+      typeof auth.createClearedSessionCookieHeader === "function"
+      ? {
+          "Set-Cookie": auth.createClearedSessionCookieHeader()
+        }
+      : {}
+  );
+}
+
+function ensureAuthenticatedOrRespond(res, requestContext, auth) {
+  try {
+    ensureAuthenticatedRequestContext(requestContext);
+    return true;
+  } catch {
+    sendUnauthorized(res, requestContext, auth);
+    return false;
+  }
+}
+
+function createRequestHandler(options) {
+  const { apiDir, apiRegistry, appDir, assetDir, auth, host, pagesDir, port, projectRoot, watchdog } = options;
+
+  return async function requestHandler(req, res) {
+    const requestUrl = new URL(req.url, `http://${req.headers.host || `${host}:${port}`}`);
+    const requestContext = createRequestContext({
+      auth,
+      req,
+      requestUrl
+    });
+
+    return runWithRequestContext(requestContext, async () => {
+      if (requestUrl.pathname.startsWith("/api/") && handleApiPreflight(req, res)) {
+        return;
+      }
+
+      if (requestUrl.pathname === "/api/proxy") {
+        if (!ensureAuthenticatedOrRespond(res, requestContext, auth)) {
+          return;
+        }
+
+        await proxyExternalRequest(req, res, requestUrl);
+        return;
+      }
+
+      const apiModule = resolveApiModule(apiRegistry, requestUrl.pathname);
+      if (apiModule) {
+        if (!apiModule.allowAnonymous && !ensureAuthenticatedOrRespond(res, requestContext, auth)) {
+          return;
+        }
+
+        await handleApiModuleRequest(req, res, requestUrl, apiModule, {
+          apiDir,
+          appDir,
+          auth,
+          assetDir,
+          watchdog,
+          host,
+          port,
+          requestContext,
+          user: requestContext.user
+        });
+        return;
+      }
+
+      if (requestUrl.pathname.startsWith("/mod/")) {
+        if (!ensureAuthenticatedOrRespond(res, requestContext, auth)) {
+          return;
+        }
+        handleModuleRequest(res, requestUrl.pathname, {
+          projectRoot,
+          username: requestContext.user.username,
+          watchdog
+        });
+        return;
+      }
+
+      await handlePageRequest(res, requestUrl, {
+        auth,
+        pagesDir,
+        requestContext
+      });
+    });
+  };
+}
+
+export { createRequestHandler };

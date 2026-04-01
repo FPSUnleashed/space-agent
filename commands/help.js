@@ -11,6 +11,11 @@ function normalizeHelpData(commandName, commandModule) {
 }
 
 function printCommandList(helpEntries) {
+  const maxNameLength = helpEntries.reduce(
+    (length, entry) => Math.max(length, entry.name.length),
+    0
+  );
+
   console.log("Agent One CLI");
   console.log("");
   console.log("Usage:");
@@ -19,7 +24,7 @@ function printCommandList(helpEntries) {
   console.log("Commands:");
 
   helpEntries.forEach((entry) => {
-    const paddedName = entry.name.padEnd(10, " ");
+    const paddedName = entry.name.padEnd(maxNameLength + 2, " ");
     console.log(`  ${paddedName}${entry.summary}`);
   });
 

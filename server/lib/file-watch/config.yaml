@@ -9,3 +9,7 @@ path-index:
 group-index:
   - /app/L0/*/group.yaml
   - /app/L1/*/group.yaml
+
+user-index:
+  - /app/L2/*/user.yaml
+  - /app/L2/*/logins.json

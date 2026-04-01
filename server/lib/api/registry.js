@@ -27,6 +27,7 @@ async function loadApiRegistry(apiDir) {
     });
 
     registry.set(endpointName, {
+      allowAnonymous: endpointModule.allowAnonymous === true,
       endpointName,
       handlers
     });

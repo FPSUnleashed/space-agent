@@ -8,7 +8,7 @@ It should not become the main application runtime. Keep browser concerns in `app
 
 ## Responsibilities
 
-- serve the root HTML entry shells from `app/L0/`
+- serve the root HTML entry shells from `server/pages/`
 - resolve browser-delivered modules from the layered `app/L0`, `app/L1`, and `app/L2` customware model
 - expose server API modules from `server/api/`
 - provide the outbound fetch proxy at `/api/proxy`
@@ -24,25 +24,39 @@ Current server layout:
 - `server/config.js`: default host, port, and filesystem roots
 - `server/dev-server.js`: source-checkout dev supervisor used by `npm run dev`
 - `server/package.json`: ES module package boundary for the backend
+- `server/pages/`: root HTML shell files served at `/`, `/login`, and `/admin`
 - `server/api/`: endpoint modules loaded by endpoint name
-- `server/proxy/`: router, CORS helpers, request parsing, response helpers, and upstream proxy service
+- `server/router/router.js`: top-level request routing order and API dispatch
+- `server/router/pages-handler.js`: page-route handler for page auth gating, redirects, and page actions such as `/logout`
+- `server/router/mod-handler.js`: `/mod/...` static module resolution and file serving
+- `server/router/request-context.js`: AsyncLocalStorage-backed request context and authenticated user resolution
+- `server/router/request-body.js`: low-level request body parsing helpers
+- `server/router/cors.js`: API CORS policy and preflight handling
+- `server/router/responses.js`: shared response writers for JSON, redirects, file responses, and API result serialization
+- `server/router/proxy.js`: outbound fetch proxy transport used by `/api/proxy`
 - `server/lib/api/registry.js`: API module discovery
-- `server/lib/app-files.js`: app-path normalization and file/glob helpers used by legacy app-file listing flows
+- `server/lib/auth/`: password verifier, login session, user file, and auth service helpers
+- `server/lib/utils/`: shared low-level utilities such as app-path normalization and lightweight YAML helpers
 - `server/lib/customware/`: layout parsing, group index building, and module inheritance resolution
 - `server/lib/file-watch/config.yaml`: declarative watched-file handler configuration
-- `server/lib/file-watch/handlers/`: watchdog handler classes loaded by name
+- `server/lib/file-watch/handlers/`: watchdog handler classes such as `path-index`, `group-index`, and `user-index`, loaded by name from config
 - `server/lib/file-watch/watchdog.js`: reusable filesystem watchdog that dispatches matching change events to handlers and exposes handler indexes
 - `server/lib/git/`: backend-abstracted Git clients used by the `update` command
 
 ## Request Flow And Runtime Contracts
 
-- request routing order is: API preflight handling, `/api/proxy`, `/api/<endpoint>`, then static file resolution
-- non-`/mod` static requests should stay limited to root HTML shells under `app/L0/`
+- request routing order is: API preflight handling, `/api/proxy`, `/api/<endpoint>`, `/mod/...`, then pages as the last fallback
+- non-`/mod` and non-`/api` requests stay limited to root HTML shells and page actions owned by the pages layer
+- the router-side pages handler owns page auth gating and page-route actions: unauthenticated requests for protected pages redirect to `/login`, authenticated requests to `/login` redirect to `/`, and `/logout` clears the current session then redirects to `/login`
 - `/mod/...` requests resolve through the layered customware model, using the watched `path-index` plus the group index to select the best accessible match from `L0`, `L1`, and `L2`
-- current request identity is derived from a temporary trusted `username` cookie via the request-context helper; treat this as a temporary shortcut, not as a long-term auth model to build around
+- request identity is now derived from the server-issued `agent_one_session` cookie via the router-side request-context helper and the watched `user-index`
+- `app/L2/<username>/user.yaml` stores the password verifier under a nested `password:` object and `app/L2/<username>/logins.json` stores active session codes
+- only explicit public endpoints such as login status, login challenge, login completion, and health may run without authentication; other APIs and `/mod/...` fetches must require a valid session
+- root page shells are pretty-routed as `/`, `/login`, and `/admin`; legacy `.html` requests redirect to those routes
 - watchdog infrastructure is config-driven
 - `path-index` is a normal watchdog handler, not a special side channel
 - `group-index` derives group membership and management relationships from `group.yaml`
+- `user-index` derives L2 user/verifier/session state from `user.yaml`, `logins.json`, and the path index
 - add new watchdog handlers by adding handler classes and wiring them in `server/lib/file-watch/config.yaml`, not by manually binding handlers in `server/app.js`
 
 ## API Module Contract
@@ -73,6 +87,9 @@ Handlers may return:
 Current endpoint set:
 
 - `health`
+- `check_login`
+- `login_challenge`
+- `login`
 - `asset_get`
 - `asset_set`
 - `db`
@@ -83,6 +100,9 @@ Current status notes:
 
 - `asset_get` and `asset_set` are placeholder endpoints, not finished persistence APIs
 - `db` is a placeholder route family for future SQLite work
+- `check_login`, `login_challenge`, and `login` are the current public auth endpoints
+- `login` enforces a fixed minimum response time before returning success or authentication failure so password attempts are not reflected as instant responses
+- the current page shells live in `server/pages/`, while all page-serving logic stays in `server/router/pages-handler.js`
 - `list_app_files` is an older bridge-style helper around app-file scanning; do not expand it casually if a cleaner module-based contract is available
 - `load_webui_extensions` resolves extension files from layered `mod/**/ext/**` paths using the current user's group inheritance and exact module-path overrides
 
@@ -94,6 +114,7 @@ Current status notes:
 - keep shared server libraries infrastructure-focused and reusable
 - keep proxy transport, API hosting, file watching, and persistence concerns separate from app orchestration
 - keep `server/app.js` focused on bootstrapping core subsystems, not on special-case registration logic
+- keep `server/pages/` limited to static page assets and keep routing logic in `server/router/`
 - prefer deterministic loader folders and name-based discovery for APIs, watched-file handlers, workers, and similar extension points
 - keep inheritance resolution explicit and small
 - keep new persistence APIs explicit, small, and integrity-safe

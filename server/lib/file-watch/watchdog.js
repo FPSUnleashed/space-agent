@@ -2,8 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-import { globToRegExp, normalizePathSegment } from "../app-files.js";
-import { parseSimpleYaml } from "../yaml-lite.js";
+import { globToRegExp, normalizePathSegment } from "../utils/app-files.js";
+import { parseSimpleYaml } from "../utils/yaml-lite.js";
 
 const REFRESH_DEBOUNCE_MS = 75;
 const RECONCILE_INTERVAL_MS = 1_000;

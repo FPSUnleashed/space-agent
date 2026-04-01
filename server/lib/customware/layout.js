@@ -1,4 +1,4 @@
-import { normalizePathSegment } from "../app-files.js";
+import { normalizePathSegment } from "../utils/app-files.js";
 
 function normalizeEntityId(value) {
   const normalized = normalizePathSegment(value);
@@ -162,11 +162,74 @@ function parseGroupConfigProjectPath(projectPath) {
   return null;
 }
 
+function parseProjectUserDirectoryPath(projectPath) {
+  const match = String(projectPath || "").match(/^\/app\/L2\/([^/]+)\/$/u);
+
+  if (!match) {
+    return null;
+  }
+
+  const username = normalizeEntityId(match[1]);
+
+  if (!username) {
+    return null;
+  }
+
+  return {
+    layer: "L2",
+    projectPath: String(projectPath),
+    username
+  };
+}
+
+function parseProjectUserConfigPath(projectPath) {
+  const match = String(projectPath || "").match(/^\/app\/L2\/([^/]+)\/user\.yaml$/u);
+
+  if (!match) {
+    return null;
+  }
+
+  const username = normalizeEntityId(match[1]);
+
+  if (!username) {
+    return null;
+  }
+
+  return {
+    layer: "L2",
+    projectPath: String(projectPath),
+    username
+  };
+}
+
+function parseProjectUserLoginsPath(projectPath) {
+  const match = String(projectPath || "").match(/^\/app\/L2\/([^/]+)\/logins\.json$/u);
+
+  if (!match) {
+    return null;
+  }
+
+  const username = normalizeEntityId(match[1]);
+
+  if (!username) {
+    return null;
+  }
+
+  return {
+    layer: "L2",
+    projectPath: String(projectPath),
+    username
+  };
+}
+
 export {
   normalizeEntityId,
   normalizeModuleRequestPath,
   parseModuleExtensionRequestPath,
   parseGroupConfigProjectPath,
   parseProjectModuleExtensionFilePath,
-  parseProjectModuleFilePath
+  parseProjectModuleFilePath,
+  parseProjectUserConfigPath,
+  parseProjectUserDirectoryPath,
+  parseProjectUserLoginsPath
 };

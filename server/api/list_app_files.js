@@ -1,4 +1,4 @@
-import { listAppFiles } from "../lib/app-files.js";
+import { listAppFiles } from "../lib/utils/app-files.js";
 
 function readRequestedPaths(context) {
   const payload =

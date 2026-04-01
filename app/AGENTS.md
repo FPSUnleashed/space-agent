@@ -14,10 +14,12 @@ The browser runtime is organized into three layers:
 - `L1/`: runtime-editable group customware
 - `L2/`: runtime-editable user customware
 
-Current browser entry surfaces:
+Current browser entry surfaces are served from `server/pages/`:
 
-- `app/L0/index.html`: main chat shell
-- `app/L0/admin.html`: admin shell
+- `/`: main chat shell from `server/pages/index.html`
+- `/admin`: admin shell from `server/pages/admin.html`
+- `/login`: standalone login screen from `server/pages/login.html`
+- `/logout`: server-side logout action that clears the session cookie and redirects to `/login`
 
 Current shared module locations:
 
@@ -38,11 +40,12 @@ Current shared module locations:
 - each group or user owns a `mod/` folder, and module contents are namespaced as `mod/<author>/<repo>/...`
 - browser-facing code and assets should normally be delivered through `/mod/...`
 - the current inheritance model is `L0 -> L1 -> L2` across the effective group chain for the current user
-- the current request identity still comes from a temporary trusted `username` cookie; do not build new frontend assumptions that depend on that shortcut lasting forever
+- authenticated frontend fetches now rely on the server-issued session cookie after login; do not reintroduce client-trusted identity shortcuts
 
 ## Frontend Implementation Guide
 
-- keep root HTML shells thin; they should load shared framework assets and mount root `x-component` entries instead of owning large inline controllers
+- keep root HTML shells thin and static; session gating for root pages belongs in the server router, not in inline boot scripts
+- keep page shells under `server/pages/` minimal; they should mount app modules rather than duplicating frontend logic there
 - use `/mod/_core/framework/initFw.js` as the shared frontend bootstrap for framework-backed pages
 - prefer Alpine stores created with `createStore(...)` for feature controllers
 - gate store-dependent component content with `x-data` and `template x-if="$store.<name>"`
@@ -56,7 +59,8 @@ Current shared module locations:
 
 ## Current State
 
-- `app/L0/index.html` loads framework styles and `/mod/_core/framework/initFw.js`, then mounts `/mod/_core/chat/chat-page.html`
-- `app/L0/admin.html` follows the same pattern and mounts `/mod/_core/admin/admin-shell.html`
+- `server/pages/index.html` and `server/pages/admin.html` are plain module-backed shells; the server router decides whether to serve them or redirect to `/login`
+- `server/pages/login.html` contains the login submit flow inline and exchanges credentials for a server session before redirecting to `/`
+- `/logout` is handled entirely by the server pages layer; there is no standalone logout page shell in `app/` or `server/pages/`
 - browser-side file changes still require a manual browser refresh; live reload is not wired into the app runtime yet
 - when app structure, layer behavior, module layout, entry shells, or frontend conventions change, update this file in the same session

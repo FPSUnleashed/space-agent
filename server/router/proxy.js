@@ -1,6 +1,8 @@
 import { Readable } from "node:stream";
 
+import { applyApiCorsHeaders } from "./cors.js";
 import { readRequestBody, requestCanHaveBody } from "./request-body.js";
+import { sendJson } from "./responses.js";
 
 const UPSTREAM_REQUEST_HEADERS_TO_STRIP = new Set([
   "accept-encoding",
@@ -73,7 +75,7 @@ function createUpstreamHeaders(headers) {
 }
 
 function createClientHeaders(upstreamHeaders, targetUrl, upstreamResponse) {
-  const clientHeaders = {};
+  const clientHeaders = Object.create(null);
 
   upstreamHeaders.forEach((value, name) => {
     const lowerName = name.toLowerCase();
@@ -91,12 +93,9 @@ function createClientHeaders(upstreamHeaders, targetUrl, upstreamResponse) {
   return clientHeaders;
 }
 
-function sendProxyError(res, applyApiCorsHeaders, statusCode, message) {
+function sendProxyError(res, statusCode, message) {
   applyApiCorsHeaders(res);
-  res.writeHead(statusCode, {
-    "Content-Type": "application/json; charset=utf-8"
-  });
-  res.end(JSON.stringify({ error: message }, null, 2));
+  sendJson(res, statusCode, { error: message });
 }
 
 async function pipeUpstreamBodyToResponse(res, upstreamResponse) {
@@ -116,11 +115,11 @@ async function pipeUpstreamBodyToResponse(res, upstreamResponse) {
   });
 }
 
-async function proxyExternalRequest(req, res, requestUrl, applyApiCorsHeaders) {
+async function proxyExternalRequest(req, res, requestUrl) {
   const targetUrlValue = getTargetUrl(requestUrl, req.headers);
 
   if (!targetUrlValue) {
-    sendProxyError(res, applyApiCorsHeaders, 400, "Missing proxy target URL");
+    sendProxyError(res, 400, "Missing proxy target URL");
     return;
   }
 
@@ -129,17 +128,17 @@ async function proxyExternalRequest(req, res, requestUrl, applyApiCorsHeaders) {
   try {
     targetUrl = new URL(targetUrlValue);
   } catch (error) {
-    sendProxyError(res, applyApiCorsHeaders, 400, "Invalid proxy target URL");
+    sendProxyError(res, 400, "Invalid proxy target URL");
     return;
   }
 
   if (!isSupportedProxyProtocol(targetUrl.protocol)) {
-    sendProxyError(res, applyApiCorsHeaders, 400, "Proxy only supports http and https targets");
+    sendProxyError(res, 400, "Proxy only supports http and https targets");
     return;
   }
 
   if (targetUrl.origin === requestUrl.origin && targetUrl.pathname === requestUrl.pathname) {
-    sendProxyError(res, applyApiCorsHeaders, 400, "Proxy target cannot point back to the proxy endpoint");
+    sendProxyError(res, 400, "Proxy target cannot point back to the proxy endpoint");
     return;
   }
 
@@ -156,7 +155,7 @@ async function proxyExternalRequest(req, res, requestUrl, applyApiCorsHeaders) {
       redirect: "follow"
     });
   } catch (error) {
-    sendProxyError(res, applyApiCorsHeaders, 502, `Upstream fetch failed: ${error.message}`);
+    sendProxyError(res, 502, `Upstream fetch failed: ${error.message}`);
     return;
   }
 
@@ -166,10 +165,4 @@ async function proxyExternalRequest(req, res, requestUrl, applyApiCorsHeaders) {
   await pipeUpstreamBodyToResponse(res, upstreamResponse);
 }
 
-export {
-  PROXY_TARGET_HEADER,
-  PROXY_RESPONSE_FINAL_HEADER,
-  PROXY_RESPONSE_REDIRECTED_HEADER,
-  PROXY_RESPONSE_TARGET_HEADER,
-  proxyExternalRequest
-};
+export { proxyExternalRequest };

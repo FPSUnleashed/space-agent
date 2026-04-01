@@ -1,4 +1,4 @@
-import { normalizePathSegment } from "../lib/app-files.js";
+import { normalizePathSegment } from "../lib/utils/app-files.js";
 import { listResolvedExtensionRequestPaths } from "../lib/customware/extension-overrides.js";
 
 function readPayload(context) {

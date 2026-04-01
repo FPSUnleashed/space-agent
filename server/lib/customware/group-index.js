@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { parseSimpleYaml } from "../yaml-lite.js";
+import { parseSimpleYaml } from "../utils/yaml-lite.js";
 import { normalizeEntityId, parseGroupConfigProjectPath } from "./layout.js";
 
 function createEmptyGroupRecord(groupId) {
