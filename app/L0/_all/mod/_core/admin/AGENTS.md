@@ -49,10 +49,11 @@ This file keeps shell-wide behavior and skill loading. Child view docs own the c
 This module owns:
 
 - `ext/html/page/admin/body/start/admin-shell.html`: thin adapter that mounts the admin shell into `server/pages/admin.html`
+- `ext/html/_core/onscreen_menu/items/admin.html`: top-right app menu item adapter, ordered with `data-order="400"`, that opens the admin shell for the current app URL
 - `views/shell/`: split shell layout, tab state, and iframe orchestration
 - `views/dashboard/`: dashboard and launch surface inside the admin pane
 - `views/agent/`: admin-side agent surface
-- `views/files/`: firmware-backed file browser
+- `views/files/`: admin Files tab adapter that mounts `_core/file_explorer`
 - `views/modules/`: firmware-backed modules panel
 - `skills/`: top-level admin skill folders, each with `SKILL.md`
 - `res/`: admin-local visual assets
@@ -70,6 +71,8 @@ Current shell responsibilities:
 - `views/shell/shell.html` owns the split two-pane layout
 - `views/shell/shell.js` owns split sizing, drag-resize behavior, orientation-dependent layout, `?url=` startup handling, and leave-admin navigation back into the current iframe URL
 - `views/shell/page.js` owns admin tabs, quick actions, tab keyboard behavior, cached `space.api.userSelfInfo()` state, and `_admin` membership checks derived from `groups`
+- the admin topbar keeps tab controls in a real tablist and ends with a non-tab leave-admin icon button that calls the same `adminShell.leaveAdminArea()` action as the dashboard card
+- `ext/html/_core/onscreen_menu/items/admin.html` owns the app-menu Admin action, orders it with `data-order="400"`, and builds `/admin?url=<current-path-search-hash>` so the admin iframe opens on the current app location
 - the active admin tab is remembered in `sessionStorage`
 - iframe-local routed navigation such as the onscreen menu Dashboard action should keep the right-hand pane inside the iframe unless the action explicitly leaves `/admin`
 
@@ -80,8 +83,8 @@ Current shell responsibilities:
 High-level ownership:
 
 - `views/dashboard/` is the lightweight dashboard and launch surface
-- `views/agent/` is the admin-side chat or execution surface, owns `space.admin.loadSkill(...)`, and now supports remote API transport plus a browser-local provider layer that can route through either HuggingFace ONNX or WebLLM behind one shared admin loop
-- `views/files/` is the firmware-backed file browser for app-rooted paths
+- `views/agent/` is the admin-side chat or execution surface, owns `space.admin.loadSkill(...)`, and supports remote API transport plus a browser-local Hugging Face provider behind one shared admin loop
+- `views/files/` is the admin Files tab adapter; reusable file browsing, editing, creation, copy, move, delete, and download behavior is owned by `_core/file_explorer`
 - `views/modules/` is the firmware-backed module list and removal surface
 
 ## Skills Contract
@@ -100,4 +103,4 @@ Current rules:
 - keep admin UI logic inside this module; do not spread admin-only behavior into unrelated modules
 - keep admin assets local under `admin/res/` instead of borrowing from unrelated feature modules
 - keep the admin shell firmware-backed; do not introduce writable-layer dependencies for the admin UI contract itself
-- if you add tabs, change the shell seam, or change how skills are discovered, update this file and `/app/AGENTS.md`
+- if you add tabs, change the shell seam, change the app-menu admin handoff, or change how skills are discovered, update this file and `/app/AGENTS.md`

@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 
 import { createPasswordVerifier } from "./passwords.js";
 import { loadAuthKeys } from "./keys_manage.js";
+import { recordAppPathMutations } from "../customware/git_history.js";
 import {
   buildUserAbsolutePath,
   ensureUserStructure,
@@ -86,6 +87,13 @@ function createUserInternal(projectRoot, username, password, options = {}, authK
     runtimeParams
   );
   writeUserLogins(projectRoot, normalizedUsername, {}, runtimeParams);
+  recordAppPathMutations(
+    {
+      projectRoot,
+      runtimeParams
+    },
+    [`/app/L2/${normalizedUsername}/`]
+  );
 
   return {
     userDir,
@@ -126,6 +134,13 @@ function setUserPassword(projectRoot, username, password, options = {}) {
     runtimeParams
   );
   writeUserLogins(projectRoot, normalizedUsername, {}, runtimeParams);
+  recordAppPathMutations(
+    {
+      projectRoot,
+      runtimeParams
+    },
+    [`/app/L2/${normalizedUsername}/meta/password.json`, `/app/L2/${normalizedUsername}/meta/logins.json`]
+  );
 
   return {
     userDir,

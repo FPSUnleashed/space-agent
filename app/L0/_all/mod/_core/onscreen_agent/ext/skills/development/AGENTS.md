@@ -54,6 +54,7 @@ Source-doc mirror map:
 - the router skill must tell the agent to load one or more deeper skills before making development changes
 - the router skill and `modules-routing/SKILL.md` should teach custom routed pages as the primary extension path when the user wants a reusable feature surface instead of a space widget
 - the router skill and `app-files-apis/SKILL.md` must tell the agent to inspect `space.api.userSelfInfo()` and derive writable app roots from `username`, `managedGroups`, and `_admin` membership in `groups`
+- `app-files-apis/SKILL.md`, `layers-ownership/SKILL.md`, and `backend-reference/SKILL.md` must keep optional `CUSTOMWARE_GIT_HISTORY` helpers and reserved `.git` metadata guidance aligned with the backend docs
 - this skill set only authorizes frontend development in `app/`; the backend reference skill is for understanding contracts, not for editing `server/`, `commands/`, or `packaging/`
 - the router skill should tell the agent to use the top-level `documentation` skill's built-in docs map for broad orientation when relevant, while still treating `AGENTS.md` files as the binding contract layer
 - nested skills should stay focused on one area rather than repeating the whole architecture

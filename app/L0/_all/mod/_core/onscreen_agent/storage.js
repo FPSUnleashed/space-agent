@@ -70,6 +70,7 @@ function isMissingFileError(error) {
 
 function normalizeStoredConfig(parsedConfig) {
   const storedConfig = parsedConfig && typeof parsedConfig === "object" ? parsedConfig : {};
+  const rawStoredProvider = storedConfig.llm_provider || storedConfig.provider;
   const storedMaxTokens =
     storedConfig.max_tokens ?? storedConfig.maxTokens ?? config.DEFAULT_ONSCREEN_AGENT_SETTINGS.maxTokens;
   const rawX = storedConfig.agent_x ?? storedConfig.agentX;
@@ -77,6 +78,8 @@ function normalizeStoredConfig(parsedConfig) {
   const rawHiddenEdge = storedConfig.hidden_edge ?? storedConfig.hiddenEdge;
   const rawHistoryHeight = storedConfig.history_height ?? storedConfig.historyHeight;
   const storedDisplayMode = normalizeDisplayMode(storedConfig.display_mode ?? storedConfig.displayMode);
+  const provider = config.normalizeOnscreenAgentLlmProvider(rawStoredProvider);
+  const localProvider = config.normalizeOnscreenAgentLocalProvider(storedConfig.local_provider || storedConfig.localProvider);
   const legacyDisplayMode =
     storedConfig.collapsed === true
       ? DISPLAY_MODE_COMPACT
@@ -88,9 +91,23 @@ function normalizeStoredConfig(parsedConfig) {
     settings: {
       apiEndpoint: String(storedConfig.api_endpoint || storedConfig.apiEndpoint || config.DEFAULT_ONSCREEN_AGENT_SETTINGS.apiEndpoint || "").trim(),
       apiKey: String(storedConfig.api_key || storedConfig.apiKey || config.DEFAULT_ONSCREEN_AGENT_SETTINGS.apiKey || "").trim(),
+      huggingfaceDtype: String(
+        storedConfig.huggingface_dtype ||
+          storedConfig.huggingfaceDtype ||
+          config.DEFAULT_ONSCREEN_AGENT_SETTINGS.huggingfaceDtype ||
+          ""
+      ).trim(),
+      huggingfaceModel: String(
+        storedConfig.huggingface_model ||
+          storedConfig.huggingfaceModel ||
+          config.DEFAULT_ONSCREEN_AGENT_SETTINGS.huggingfaceModel ||
+          ""
+      ).trim(),
+      localProvider,
       maxTokens: config.normalizeOnscreenAgentMaxTokens(storedMaxTokens),
       model: String(storedConfig.model || config.DEFAULT_ONSCREEN_AGENT_SETTINGS.model || "").trim(),
-      paramsText: String(storedConfig.params || storedConfig.paramsText || config.DEFAULT_ONSCREEN_AGENT_SETTINGS.paramsText || "").trim()
+      paramsText: String(storedConfig.params || storedConfig.paramsText || config.DEFAULT_ONSCREEN_AGENT_SETTINGS.paramsText || "").trim(),
+      provider
     },
     systemPrompt: String(
       storedConfig.custom_system_prompt ||
@@ -115,6 +132,10 @@ function buildStoredConfigPayload({ settings, systemPrompt, agentX, agentY, hidd
   const payload = {
     api_endpoint: String(settings?.apiEndpoint || config.DEFAULT_ONSCREEN_AGENT_SETTINGS.apiEndpoint || "").trim(),
     api_key: String(settings?.apiKey || config.DEFAULT_ONSCREEN_AGENT_SETTINGS.apiKey || "").trim(),
+    huggingface_dtype: String(settings?.huggingfaceDtype || config.DEFAULT_ONSCREEN_AGENT_SETTINGS.huggingfaceDtype || "").trim(),
+    huggingface_model: String(settings?.huggingfaceModel || config.DEFAULT_ONSCREEN_AGENT_SETTINGS.huggingfaceModel || "").trim(),
+    local_provider: config.normalizeOnscreenAgentLocalProvider(settings?.localProvider),
+    llm_provider: config.normalizeOnscreenAgentLlmProvider(settings?.provider),
     max_tokens: config.normalizeOnscreenAgentMaxTokens(settings?.maxTokens),
     model: String(settings?.model || config.DEFAULT_ONSCREEN_AGENT_SETTINGS.model || "").trim(),
     params: String(settings?.paramsText || config.DEFAULT_ONSCREEN_AGENT_SETTINGS.paramsText || "").trim(),

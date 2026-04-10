@@ -7,8 +7,7 @@ export const ADMIN_CHAT_LLM_PROVIDER = {
 };
 
 export const ADMIN_CHAT_LOCAL_PROVIDER = {
-  HUGGINGFACE: "huggingface",
-  WEBLLM: "webllm"
+  HUGGINGFACE: "huggingface"
 };
 
 export const DEFAULT_ADMIN_CHAT_SETTINGS = {
@@ -20,8 +19,7 @@ export const DEFAULT_ADMIN_CHAT_SETTINGS = {
   maxTokens: DEFAULT_ADMIN_CHAT_MAX_TOKENS,
   model: "openai/gpt-5.4-mini",
   paramsText: "temperature:0.2",
-  provider: ADMIN_CHAT_LLM_PROVIDER.API,
-  webllmModel: ""
+  provider: ADMIN_CHAT_LLM_PROVIDER.API
 };
 
 export function normalizeAdminChatLlmProvider(value) {
@@ -31,9 +29,7 @@ export function normalizeAdminChatLlmProvider(value) {
 }
 
 export function normalizeAdminChatLocalProvider(value) {
-  return value === ADMIN_CHAT_LOCAL_PROVIDER.WEBLLM
-    ? ADMIN_CHAT_LOCAL_PROVIDER.WEBLLM
-    : ADMIN_CHAT_LOCAL_PROVIDER.HUGGINGFACE;
+  return ADMIN_CHAT_LOCAL_PROVIDER.HUGGINGFACE;
 }
 
 export function createAdminChatHuggingFaceSelectionValue(modelId, dtype) {
@@ -77,13 +73,6 @@ export function parseAdminChatHuggingFaceSelectionValue(value) {
 
 export function getAdminChatLocalModelSelection(settings = {}) {
   const provider = normalizeAdminChatLocalProvider(settings.localProvider);
-
-  if (provider === ADMIN_CHAT_LOCAL_PROVIDER.WEBLLM) {
-    return {
-      modelId: String(settings.webllmModel || "").trim(),
-      provider
-    };
-  }
 
   return {
     dtype: String(settings.huggingfaceDtype || "").trim(),

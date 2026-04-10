@@ -22,7 +22,8 @@ Always update the relevant docs in the same session as the code change:
 - keep higher-level docs abstract where appropriate and push implementation detail down into local docs
 - keep lower-level docs concrete, explicit, and practical
 - remove stale or contradictory documentation immediately
-- do not create parallel architecture notes in `README.md`; durable contracts belong in `AGENTS.md`, while broader agent-facing narrative docs belong in `app/L0/_all/mod/_core/documentation/docs/`
+- keep `README.md` as the public product source of truth for the project pitch, quick starts, community links, release links, and the high-level documentation map
+- do not let `README.md` become a competing implementation contract; durable architecture and workflow contracts belong in `AGENTS.md`, while broader agent-facing narrative docs belong in `app/L0/_all/mod/_core/documentation/docs/`
 
 Documentation depth model:
 
@@ -100,6 +101,7 @@ These rules apply across the codebase:
 Top-level structure:
 
 - `space`: root CLI router that discovers command modules dynamically
+- `.github/`: repo-level automation, including tagged desktop release publishing
 - `commands/`: CLI command modules such as `serve`, `help`, `get`, `set`, `version`, and `update`
 - `app/`: browser runtime, layered customware model, shared frontend modules, and browser test surfaces
 - `server/`: thin local infrastructure runtime, with page shells, request routing, API hosting, fetch proxying, file-watch indexes, auth/session infrastructure, and Git support code
@@ -119,6 +121,7 @@ Project concepts:
 - the server resolves `/mod/...` requests through the layered inheritance model and honors a `maxLayer` ceiling that defaults to `2`
 - the `/admin` frontend clamps module and extension resolution to `L0` with `maxLayer=0` so admin UI assets stay firmware-backed even though app file APIs still operate on normal writable layers
 - the browser authenticates through the server and uses a server-issued session cookie for protected API, module, and app-file access
+- when `CUSTOMWARE_GIT_HISTORY` is enabled, writable `L1/<group>/` and `L2/<user>/` roots are treated as optional per-owner local Git repositories with adaptive-debounced server-side commits and rollback APIs
 - runtime parameters are defined in `commands/params.yaml`; `node space serve` resolves them in this order: launch arguments, stored `.env` params written by `node space set`, then process environment variables, then schema defaults; `CUSTOMWARE_PATH` is the parent directory for writable backend `L1/` and `L2/` storage when configured, and page shells receive only `frontend_exposed` values as injected meta tags
 - app file APIs use logical app-rooted paths such as `L2/alice/user.yaml` or `/app/L2/alice/user.yaml`, and supported endpoints may also accept `~` or `~/...` for the authenticated user's `L2/<username>/...`; those logical paths do not change when `CUSTOMWARE_PATH` relocates the writable backend roots
 - non-`/api` and non-`/mod` browser entry routes are served from `server/pages/`; `/login` and `/enter` are public and the protected page shells live behind the router-side session gate
@@ -151,6 +154,7 @@ Project concepts:
 - `node space serve` to run the server directly
 - `npm run install:packaging` to install packaging-only dependencies
 - `npm run desktop:dev`, `npm run desktop:pack`, and `npm run desktop:dist` for the Electron host and packaging flow
+- `.github/workflows/release-desktop.yml` builds tagged desktop releases for Windows, macOS, and Linux on both x64 and arm64, but only when the pushed tag points at `main` HEAD; it generates release notes automatically from commits through the OpenRouter helper flow, rebuilds fresh desktop artifacts for every tagged release, and publishes GitHub Release artifacts that the packaged Electron updater downloads directly
 
 ## Documentation System
 
@@ -182,6 +186,7 @@ Child-doc obligations:
 
 Core ownership:
 
+- `/README.md` owns the public-facing project overview, quick starts, call-to-action links, community links, release entry points, and DeepWiki discovery link; it must point back to the binding `AGENTS.md` contract instead of replacing it
 - `/AGENTS.md` owns repo-wide rules, documentation policy, top-level structure, and cross-cutting principles
 - `/app/AGENTS.md` owns browser-runtime architecture, layer rules, frontend composition rules, and app-wide guidance
 - `/server/AGENTS.md` owns server responsibilities, request flow, API/module/page boundaries, and server-wide infrastructure guidance

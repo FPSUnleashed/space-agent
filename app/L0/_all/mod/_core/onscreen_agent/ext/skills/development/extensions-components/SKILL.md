@@ -11,6 +11,7 @@ Use this skill when the task needs `ext/html/`, `ext/js/`, `x-extension`, `x-com
 - Matching HTML files live at `mod/<author>/<repo>/ext/html/some/path/*.html`.
 - HTML callers name only the seam; the runtime resolves `ext/html/` automatically.
 - Keep extension files thin. They should usually mount a real component with `<x-component path="/mod/...">`.
+- The top-right routed menu owns Home itself and points it at the empty route `#/`; feature modules add non-Home menu-action buttons under `_core/onscreen_menu/items` with numeric `data-order` values such as `100`, `200`, `300`, and `400`, `_core/onscreen_menu` sorts them automatically, and `_core/onscreen_menu` keeps only the auth exit action after that seam.
 
 Example:
 

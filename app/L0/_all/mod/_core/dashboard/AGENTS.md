@@ -20,6 +20,7 @@ This module owns:
 Current route contract:
 
 - the dashboard is routed at `#/dashboard`
+- the top-right menu Home button intentionally routes to the empty route, not directly here; the router default-route contract currently resolves that empty route to the dashboard
 - it should stay a small landing surface, not a second app shell
 - the dashboard must own its own page padding because the router shell no longer injects shared route padding
 
@@ -41,4 +42,4 @@ Rules:
 
 - keep dashboard-owned copy and styling minimal
 - add or change dashboard seams here rather than reaching into the DOM from another module
-- if dashboard routing or stable seams change, update this file and `/app/AGENTS.md`
+- if dashboard routing, default-home behavior, or stable seams change, update this file, `_core/onscreen_menu/AGENTS.md`, and `/app/AGENTS.md`

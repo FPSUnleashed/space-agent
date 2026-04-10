@@ -33,8 +33,12 @@ Current persisted files:
 
 Important config fields:
 
-- provider endpoint and model params
+- `llm_provider`
+- `local_provider`
+- API endpoint, key, model, and params
 - `max_tokens`
+- `huggingface_model`
+- `huggingface_dtype`
 - optional `custom_system_prompt`
 - `agent_x`, `agent_y`
 - optional `hidden_edge`
@@ -43,6 +47,9 @@ Important config fields:
 
 Current defaults:
 
+- provider: `api`
+- local provider: `huggingface`
+- Hugging Face dtype: `q4`
 - endpoint: `https://openrouter.ai/api/v1/chat/completions`
 - model: `openai/gpt-5.4-mini`
 - params: `temperature: 0.2`
@@ -73,6 +80,12 @@ Key files:
 The routed overlay anchors in `_core/router` are the supported place for floating routed UI. The overlay should not be hardwired directly into the router shell.
 
 The settings and prompt-history dialogs reuse the shared `_core/visual/forms/dialog.css` shell layout. Their header and footer rows stay fixed while only the settings body or prompt-history frame scrolls, so the footer actions remain reachable even when the content is long.
+
+The settings dialog now has two provider tabs named `API` and `Local`. `API` keeps the OpenAI-compatible endpoint, model, and key fields. `Local` mounts the shared Hugging Face config sidebar in onscreen mode, so the overlay reads the same saved-model list and live WebGPU worker state as the routed Local LLM page and the admin chat. Opening the Local tab should refresh saved-model shortcuts without booting the worker; saving local settings persists the selected repo id and dtype, then starts background model preparation. When no local model is selected, no local model is loaded, and the shared saved-model list is empty, the Local panel prefills the Hugging Face model field with the same testing-page default: `onnx-community/gemma-4-E4B-it-ONNX`.
+
+The API-key composer blocker applies only to the default API-provider configuration with no API key. Local Hugging Face mode can send without an API key and falls back to loading the selected local model on the first message if background preparation has not finished.
+
+Local Hugging Face sends use the compact `LOCAL_ONSCREEN_AGENT_SYSTEM_PROMPT` profile from `llm.js` rather than the full firmware prompt plus skill catalog. The normal overlay history, transient context, execution loop, prompt inspection, and custom instructions still apply.
 
 Dragging the astronaut past any viewport edge now first hits a dead zone at the in-screen clamp that matches the reveal-threshold distance so corner placement stays practical, then snaps the shell into a hidden peeking pose on that edge after the pointer crosses that extra distance. In that state about 55 percent of the avatar remains in view, the astronaut keeps its normal left or right facing flip while also rotating by edge direction, the chat body collapses away, the hidden panel and history surfaces stop intercepting clicks or wheel scrolling while invisible, and a click or drag back past the reveal threshold restores the previous compact or full chat body.
 

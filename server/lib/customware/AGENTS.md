@@ -14,7 +14,8 @@ Current files:
 
 - `layout.js`: path normalization, entity-id normalization, logical-to-disk resolution for `L0`/`L1`/`L2`, and parser helpers for app, group, user, module, and extension paths
 - `layer_limit.js`: `maxLayer` parsing, normalization, and request-level resolution
-- `group_files.js`: normalized `L1/<group>/group.yaml` read and write helpers used by CLI-managed group editing
+- `git_history.js`: optional per-owner local Git history scheduling, repository discovery, commit listing, rollback, and `.git` metadata shielding for writable `L1` and `L2`
+- `group_files.js`: normalized `L1/<group>/group.yaml` read and write helpers used by CLI-managed group editing; membership adds ensure the target writable group directory exists first
 - `group_index.js`: derived group membership and management graph from `group.yaml`
 - `overrides.js`: inheritance ranking, accessible module collection, and override selection
 - `module_inheritance.js`: `/mod/...` file resolution through layered overrides
@@ -51,6 +52,12 @@ Permission rules:
 
 Those fields are the canonical inputs for the derived membership and management graph.
 
+CLI group-editing rules:
+
+- `group create` explicitly creates a writable `L1/<group>/` root
+- `group add` and `user create --groups ...` may create the target writable `L1/<group>/` root automatically before writing membership, including `_admin`
+- those writes must pass the resolved runtime params into `group_files.js` so configured `CUSTOMWARE_PATH` roots are honored
+
 ## Inheritance And Override Contract
 
 Module and extension resolution is layered and rank-based.
@@ -85,6 +92,7 @@ Important rules:
 - app-file info
 - readable folder-download permission and path resolution for `folder_download`
 - pattern-based `file_paths` lookup
+- write-access-filtered `file_list` and `file_paths` discovery, including local-history repository root discovery that never exposes `.git` metadata
 
 Rules:
 
@@ -92,6 +100,8 @@ Rules:
 - single-path app-file deletes must continue to work when request plumbing passes `paths: undefined`; only an explicit non-array `paths` value should be rejected as malformed batch input
 - keep permission, duplication, overlap, path-normalization, and logical-to-disk resolution logic centralized here
 - frontend callers should derive writable roots from the canonical permission rules and the `user_self_info` identity fields instead of depending on a serialized scope payload
+- callers that need server-confirmed writable discovery may pass `access: "write"` or `writableOnly: true` to `file_list` or `file_paths`; repository pickers may add `gitRepositories: true` with a pattern such as `**/.git/` to receive writable owner roots like `L1/<group>/` and `L2/<user>/`
+- when `CUSTOMWARE_GIT_HISTORY` is enabled, writable `L1` and `L2` file mutations schedule debounced per-owner Git history commits
 
 `module_manage.js` is the canonical entry point for:
 
@@ -108,6 +118,24 @@ Current module-list areas are:
 - `l2_users`
 
 Admin-only access is required for aggregated or cross-user user-layer listings.
+
+`git_history.js` is the canonical entry point for optional per-owner writable-layer history:
+
+- `CUSTOMWARE_GIT_HISTORY=false` disables automatic history scheduling by default
+- each writable `L1/<group>/` and `L2/<user>/` owner root may become its own local Git repository when history is enabled
+- file writes, deletes, copies, moves, auth/user writes, group writes, and module installs schedule a debounced commit for the affected owner root
+- the debounce window starts at 10 seconds of quiet, drops to 5 seconds after a pending owner root has waited more than 1 minute, drops to 1 second after 5 minutes, and commits immediately after 10 minutes
+- server shutdown flushes pending commits
+- commit listing supports page `limit`, page `offset`, and open-ended `fileFilter` matching across changed paths and nested filenames; filtered list responses include full per-commit file action entries for listed commits, not only the matching files, but still do not include patch bodies
+- file diff reads, operation previews, and commit revert operations are separate helper calls so list pages stay fast
+- repository discovery reuses the history target and permission model, returns owner roots rather than `.git` paths, and supports write-access filtering for Time Travel repository selection
+- operation previews require write access, return the files affected by travel or revert, and can return an operation-specific patch for one file
+- rollback suppresses scheduling so resetting a worktree does not create a commit loop
+- rollback preserves the previous head in backend-owned history refs when possible so commits after the travelled-to point remain listable for forward travel
+- revert creates a new history commit that undoes the selected commit instead of resetting the worktree to that commit
+- each owner repository has a `.gitignore`; `L2` repositories must ignore `meta/password.json` and `meta/logins.json`, while `L1` group repositories currently use an empty ignore file
+- rollback snapshots and restores the ignored L2 auth files so old commits cannot log the user out or resurrect an old password verifier
+- `.git` metadata paths are reserved and must not be exposed through app-file APIs, direct app fetches, or path indexes
 
 ## Development Guidance
 

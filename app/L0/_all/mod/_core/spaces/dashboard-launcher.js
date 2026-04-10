@@ -146,9 +146,13 @@ globalThis.spacesDashboardLauncher = function spacesDashboardLauncher() {
     emptyTitleAnimationCleanup: null,
     emptyTitleAnimationFrame: 0,
     entries: [],
+    gridFilledStage: false,
+    gridResizeObserver: null,
+    gridLayoutSyncFrame: 0,
     loadErrorText: "",
     loading: false,
     motionQuery: null,
+    observedGridElement: null,
 
     async init() {
       this.motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -156,9 +160,12 @@ globalThis.spacesDashboardLauncher = function spacesDashboardLauncher() {
     },
 
     destroy() {
+      this.disconnectGridResizeObserver();
       this.stopEmptyTitleAnimation();
       window.cancelAnimationFrame(this.emptyTitleAnimationFrame);
       this.emptyTitleAnimationFrame = 0;
+      window.cancelAnimationFrame(this.gridLayoutSyncFrame);
+      this.gridLayoutSyncFrame = 0;
     },
 
     get hasEntries() {
@@ -179,6 +186,92 @@ globalThis.spacesDashboardLauncher = function spacesDashboardLauncher() {
 
         this.emptyTitleAnimationCleanup = startFloatingTitleAnimation(element, this.motionQuery);
       });
+    },
+
+    disconnectGridResizeObserver() {
+      if (this.gridResizeObserver) {
+        this.gridResizeObserver.disconnect();
+      }
+
+      this.gridResizeObserver = null;
+      this.observedGridElement = null;
+    },
+
+    ensureGridResizeObserver(element) {
+      if (!element) {
+        this.disconnectGridResizeObserver();
+        this.gridFilledStage = false;
+        return;
+      }
+
+      if (this.observedGridElement === element) {
+        return;
+      }
+
+      this.disconnectGridResizeObserver();
+
+      if (typeof window.ResizeObserver !== "function") {
+        this.observedGridElement = element;
+        return;
+      }
+
+      this.gridResizeObserver = new window.ResizeObserver(() => {
+        this.queueGridLayoutSync();
+      });
+      this.gridResizeObserver.observe(element);
+      this.observedGridElement = element;
+    },
+
+    queueGridLayoutSync() {
+      window.cancelAnimationFrame(this.gridLayoutSyncFrame);
+      this.gridLayoutSyncFrame = window.requestAnimationFrame(() => {
+        this.gridLayoutSyncFrame = 0;
+        this.syncGridLayoutState();
+      });
+    },
+
+    syncGridLayoutState() {
+      const element = this.$refs?.grid;
+
+      if (!element) {
+        this.disconnectGridResizeObserver();
+        this.gridFilledStage = false;
+        return;
+      }
+
+      this.ensureGridResizeObserver(element);
+
+      const slots = Array.from(element.children).filter((child) => child instanceof HTMLElement);
+      const firstCard = element.querySelector(".dashboard-space-card");
+      const computedStyle = window.getComputedStyle(element);
+      const maxColumns = Math.max(1, Number.parseInt(computedStyle.getPropertyValue("--dashboard-space-grid-max-columns"), 10) || 5);
+      const baseGap = Math.max(0, Number.parseFloat(computedStyle.rowGap) || 0);
+
+      if (!firstCard) {
+        element.style.setProperty("--dashboard-space-grid-columns", "1");
+        this.gridFilledStage = false;
+        return;
+      }
+
+      const cardWidth = Math.max(1, firstCard.getBoundingClientRect().width);
+      const availableWidth = Math.max(
+        cardWidth,
+        element.parentElement?.clientWidth || 0,
+        element.clientWidth
+      );
+      const totalCards = slots.length;
+      const capacity = Math.max(
+        1,
+        Math.min(
+          maxColumns,
+          Math.floor((availableWidth + baseGap + 0.5) / (cardWidth + baseGap))
+        )
+      );
+      const usesFilledStage = totalCards >= capacity;
+      const columns = Math.max(1, usesFilledStage ? capacity : totalCards);
+
+      element.style.setProperty("--dashboard-space-grid-columns", String(columns));
+      this.gridFilledStage = usesFilledStage;
     },
 
     stopEmptyTitleAnimation() {
@@ -203,6 +296,7 @@ globalThis.spacesDashboardLauncher = function spacesDashboardLauncher() {
       } finally {
         this.loading = false;
         this.queueEmptyTitleAnimationSync();
+        this.queueGridLayoutSync();
       }
     },
 
@@ -250,6 +344,7 @@ globalThis.spacesDashboardLauncher = function spacesDashboardLauncher() {
       } finally {
         this.duplicatingSpaceId = "";
         this.queueEmptyTitleAnimationSync();
+        this.queueGridLayoutSync();
       }
     },
 
@@ -283,6 +378,7 @@ globalThis.spacesDashboardLauncher = function spacesDashboardLauncher() {
       } finally {
         this.deletingSpaceId = "";
         this.queueEmptyTitleAnimationSync();
+        this.queueGridLayoutSync();
       }
     },
 

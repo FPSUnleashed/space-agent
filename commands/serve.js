@@ -63,11 +63,10 @@ export const help = {
     "node space serve",
     "node space serve --host 0.0.0.0 --port 3000",
     "node space serve PORT=0",
-    "node space serve PORT=3100 ALLOW_GUEST_USERS=false",
-    "node space serve CUSTOMWARE_PATH=../space-customware"
+    "node space serve PORT=3100 ALLOW_GUEST_USERS=false"
   ],
   description:
-    "Starts the local Node server that serves the browser app and proxies fetch requests. Runtime parameters may be overridden at launch with PARAM=VALUE arguments; launch arguments win over stored .env parameters, which win over process environment variables.",
+    "Starts the local Node server that serves the browser app and proxies fetch requests. Runtime parameters may be overridden at launch with PARAM=VALUE arguments; launch arguments win over stored .env parameters, which win over process environment variables. Use node space set CUSTOMWARE_PATH <path> before creating users or groups when writable state should live outside the source checkout.",
   options: [
     {
       flag: "--host <host>",
@@ -80,11 +79,9 @@ export const help = {
   ],
   examples: [
     "node space serve",
-    "node space serve --host 127.0.0.1 --port 3100",
-    "node space serve PORT=0",
-    "node space serve PORT=80 ALLOW_GUEST_USERS=false",
-    "node space serve SINGLE_USER_APP=true HOST=127.0.0.1",
-    "node space serve CUSTOMWARE_PATH=/srv/space/customware"
+    "node space serve SINGLE_USER_APP=true",
+    "node space set CUSTOMWARE_PATH /srv/space/customware",
+    "node space serve"
   ]
 };
 

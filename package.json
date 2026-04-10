@@ -4,6 +4,10 @@
   "private": true,
   "description": "Browser-first AI agent with a thin Node.js server.",
   "author": "Jan Tomasek",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/agent0ai/agent-one.git"
+  },
   "main": "packaging/desktop/main.js",
   "scripts": {
     "start": "node space serve",
@@ -12,12 +16,16 @@
     "desktop:dev": "node packaging/scripts/desktop-dev-run.js",
     "desktop:pack": "node packaging/scripts/host-package.js --dir",
     "desktop:dist": "node packaging/scripts/host-package.js",
+    "desktop:dist:all": "node packaging/scripts/host-package.js --arch x64,arm64",
     "desktop:dist:mac": "node packaging/scripts/macos-package.js",
     "package:desktop:host": "node packaging/scripts/host-package.js",
     "package:desktop:host:dir": "node packaging/scripts/host-package.js --dir",
     "package:desktop:macos": "node packaging/scripts/macos-package.js",
+    "package:desktop:macos:all": "node packaging/scripts/macos-package.js --arch x64,arm64",
     "package:desktop:linux": "node packaging/scripts/linux-package.js",
-    "package:desktop:windows": "node packaging/scripts/windows-package.js"
+    "package:desktop:linux:all": "node packaging/scripts/linux-package.js --arch x64,arm64",
+    "package:desktop:windows": "node packaging/scripts/windows-package.js",
+    "package:desktop:windows:all": "node packaging/scripts/windows-package.js --arch x64,arm64"
   },
   "engines": {
     "node": ">=20"
@@ -26,8 +34,15 @@
     "appId": "com.spaceagent.desktop",
     "productName": "Space Agent",
     "npmRebuild": false,
+    "publish": {
+      "provider": "github",
+      "owner": "agent0ai",
+      "repo": "agent-one",
+      "releaseType": "release"
+    },
     "files": [
       "space",
+      "space.js",
       "app/**/*",
       "commands/**/*",
       "server/**/*",
@@ -45,7 +60,7 @@
         "dmg",
         "zip"
       ],
-      "hardenedRuntime": false,
+      "hardenedRuntime": true,
       "entitlements": "packaging/platforms/macos/entitlements.mac.plist",
       "entitlementsInherit": "packaging/platforms/macos/entitlements.mac.plist"
     },
@@ -72,6 +87,7 @@
     "purpose": "Thin mobile-compatible server bridge for fetch proxying and local infrastructure."
   },
   "dependencies": {
+    "electron-updater": "^6.8.3",
     "isomorphic-git": "^1.37.4"
   },
   "optionalDependencies": {

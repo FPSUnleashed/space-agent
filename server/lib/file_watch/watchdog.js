@@ -64,6 +64,17 @@ function stripTrailingSlash(value) {
   return String(value || "").endsWith("/") ? String(value).slice(0, -1) : String(value || "");
 }
 
+function hasIgnoredPathSegment(value) {
+  return String(value || "")
+    .split(/[\\/]+/u)
+    .filter(Boolean)
+    .includes(".git");
+}
+
+function isIgnoredProjectPath(projectPath) {
+  return hasIgnoredPathSegment(normalizePathSegment(projectPath));
+}
+
 function normalizeDirectorySuffix(projectPath, isDirectory = false) {
   if (!projectPath) {
     return "";
@@ -218,6 +229,10 @@ function walkDirectories(startDir, output) {
       continue;
     }
 
+    if (entry.name === ".git") {
+      continue;
+    }
+
     walkDirectories(path.join(startDir, entry.name), output);
   }
 }
@@ -232,6 +247,10 @@ function walkFiles(startDir, callback) {
 
   for (const entry of entries) {
     const fullPath = path.join(startDir, entry.name);
+
+    if (entry.name === ".git") {
+      continue;
+    }
 
     if (entry.isDirectory()) {
       walkFiles(fullPath, callback);
@@ -259,6 +278,10 @@ function matchesCompiledPatterns(compiledPatterns, projectPath) {
   const normalized = normalizePathSegment(projectPath);
 
   if (!normalized) {
+    return false;
+  }
+
+  if (hasIgnoredPathSegment(normalized)) {
     return false;
   }
 
@@ -387,6 +410,10 @@ export function createWatchdog(options = {}) {
 
     if (!projectPath) {
       return false;
+    }
+
+    if (isIgnoredProjectPath(projectPath)) {
+      return removeCurrentEntries(projectPath);
     }
 
     if (!matchesCompiledPatterns(compiledPatterns, projectPath)) {
@@ -575,6 +602,10 @@ export function createWatchdog(options = {}) {
   }
 
   function schedulePathSync(targetPath) {
+    if (hasIgnoredPathSegment(targetPath)) {
+      return;
+    }
+
     if (targetPath) {
       pendingChangedPaths.add(targetPath);
     }
@@ -639,6 +670,10 @@ export function createWatchdog(options = {}) {
   }
 
   function syncAbsolutePath(targetPath) {
+    if (hasIgnoredPathSegment(targetPath)) {
+      return false;
+    }
+
     const stats = tryStat(targetPath);
 
     if (!stats) {
@@ -760,7 +795,13 @@ export function createWatchdog(options = {}) {
       const changes = [];
 
       for (const targetPath of pathsToSync) {
-        changes.push(createChangeEvent(targetPath));
+        const change = createChangeEvent(targetPath);
+
+        if (change.projectPath && isIgnoredProjectPath(change.projectPath)) {
+          continue;
+        }
+
+        changes.push(change);
 
         if (syncAbsolutePath(targetPath)) {
           changed = true;

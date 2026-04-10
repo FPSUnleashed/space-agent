@@ -12,7 +12,7 @@ layout_order:
   - crypto-prices
 sizes:
   iphone-weather: 5x5
-  news-feed: 5x10
+  news-feed: 5x9
   crypto-prices: 5x4
 positions:
   iphone-weather: "0,-5"

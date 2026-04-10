@@ -39,74 +39,78 @@
         </template>
 
         <template x-if="!loading && !loadErrorText && hasEntries">
-          <div class="dashboard-spaces-launcher-grid">
-            <article class="dashboard-space-card dashboard-space-card--create">
-              <button type="button" class="dashboard-space-card-create" :disabled="creating" @click="createSpace()">
-                <span class="dashboard-space-card-create-icon">
-                  <x-icon x-text="creating ? 'hourglass_top' : 'add'"></x-icon>
-                </span>
-                <div class="dashboard-space-card-create-copy">
-                  <strong x-text="creating ? 'Creating Space…' : 'Create New Space'"></strong>
-                </div>
-              </button>
-            </article>
-
-            <template x-for="item in entries" :key="item.id">
-              <article class="dashboard-space-card">
-                <button
-                  type="button"
-                  class="dashboard-space-card-open"
-                  :disabled="deletingSpaceId === item.id || duplicatingSpaceId === item.id"
-                  @click="openSpace(item.id)"
-                >
-                  <div class="dashboard-space-card-copy">
-                    <h3 x-text="item.displayTitle"></h3>
-                  </div>
-
-                  <span
-                    class="dashboard-space-card-icon"
-                    :style="{ '--dashboard-space-card-icon-color': item.displayIconColor }"
-                  >
-                    <x-icon x-text="item.displayIcon"></x-icon>
+          <div class="dashboard-spaces-launcher-grid" :class="{ 'is-filled-stage': gridFilledStage }" x-ref="grid">
+            <div class="dashboard-space-slot">
+              <article class="dashboard-space-card dashboard-space-card--create">
+                <button type="button" class="dashboard-space-card-create" :disabled="creating" @click="createSpace()">
+                  <span class="dashboard-space-card-create-icon">
+                    <x-icon x-text="creating ? 'hourglass_top' : 'add'"></x-icon>
                   </span>
-
-                  <div class="dashboard-space-card-tags">
-                    <template x-for="tag in item.widgetPreviewNames" :key="`${item.id}-${tag}`">
-                      <span class="dashboard-space-card-tag" x-text="tag"></span>
-                    </template>
-
-                    <template x-if="!item.widgetPreviewNames.length">
-                      <span class="dashboard-space-card-tag is-muted">Empty</span>
-                    </template>
+                  <div class="dashboard-space-card-create-copy">
+                    <strong x-text="creating ? 'Creating Space…' : 'Create New Space'"></strong>
                   </div>
                 </button>
-
-                <div class="dashboard-space-card-footer">
-                  <p class="dashboard-space-card-date" x-text="item.localeUpdatedAt"></p>
-
-                  <div class="dashboard-space-card-actions">
-                    <button
-                      type="button"
-                      class="dashboard-space-card-action"
-                      :aria-label="`Duplicate ${item.displayTitle}`"
-                      :disabled="deletingSpaceId === item.id || duplicatingSpaceId === item.id"
-                      @click="duplicateSpace(item.id)"
-                    >
-                      <x-icon x-text="duplicatingSpaceId === item.id ? 'hourglass_top' : 'content_copy'"></x-icon>
-                    </button>
-
-                    <button
-                      type="button"
-                      class="dashboard-space-card-action dashboard-space-card-action--danger"
-                      :aria-label="`Delete ${item.displayTitle}`"
-                      :disabled="deletingSpaceId === item.id || duplicatingSpaceId === item.id"
-                      @click="deleteSpace(item.id)"
-                    >
-                      <x-icon x-text="deletingSpaceId === item.id ? 'hourglass_top' : 'delete'"></x-icon>
-                    </button>
-                  </div>
-                </div>
               </article>
+            </div>
+
+            <template x-for="item in entries" :key="item.id">
+              <div class="dashboard-space-slot">
+                <article class="dashboard-space-card">
+                  <button
+                    type="button"
+                    class="dashboard-space-card-open"
+                    :disabled="deletingSpaceId === item.id || duplicatingSpaceId === item.id"
+                    @click="openSpace(item.id)"
+                  >
+                    <div class="dashboard-space-card-copy">
+                      <h3 x-text="item.displayTitle"></h3>
+                    </div>
+
+                    <span
+                      class="dashboard-space-card-icon"
+                      :style="{ '--dashboard-space-card-icon-color': item.displayIconColor }"
+                    >
+                      <x-icon x-text="item.displayIcon"></x-icon>
+                    </span>
+
+                    <div class="dashboard-space-card-tags">
+                      <template x-for="tag in item.widgetPreviewNames" :key="`${item.id}-${tag}`">
+                        <span class="dashboard-space-card-tag" x-text="tag"></span>
+                      </template>
+
+                      <template x-if="!item.widgetPreviewNames.length">
+                        <span class="dashboard-space-card-tag is-muted">Empty</span>
+                      </template>
+                    </div>
+                  </button>
+
+                  <div class="dashboard-space-card-footer">
+                    <p class="dashboard-space-card-date" x-text="item.localeUpdatedAt"></p>
+
+                    <div class="dashboard-space-card-actions">
+                      <button
+                        type="button"
+                        class="dashboard-space-card-action"
+                        :aria-label="`Duplicate ${item.displayTitle}`"
+                        :disabled="deletingSpaceId === item.id || duplicatingSpaceId === item.id"
+                        @click="duplicateSpace(item.id)"
+                      >
+                        <x-icon x-text="duplicatingSpaceId === item.id ? 'hourglass_top' : 'content_copy'"></x-icon>
+                      </button>
+
+                      <button
+                        type="button"
+                        class="dashboard-space-card-action dashboard-space-card-action--danger"
+                        :aria-label="`Delete ${item.displayTitle}`"
+                        :disabled="deletingSpaceId === item.id || duplicatingSpaceId === item.id"
+                        @click="deleteSpace(item.id)"
+                      >
+                        <x-icon x-text="deletingSpaceId === item.id ? 'hourglass_top' : 'delete'"></x-icon>
+                      </button>
+                    </div>
+                  </div>
+                </article>
+              </div>
             </template>
           </div>
         </template>

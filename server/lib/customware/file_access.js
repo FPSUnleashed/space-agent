@@ -3,6 +3,11 @@ import path from "node:path";
 
 import { createRuntimeGroupIndex, getRuntimeGroupIndex } from "./group_runtime.js";
 import {
+  isReservedAppProjectPath,
+  listLayerHistoryRepositories,
+  recordAppPathMutations
+} from "./git_history.js";
+import {
   normalizeAppProjectPath,
   normalizeEntityId,
   parseAppProjectPath,
@@ -135,6 +140,37 @@ function compileFilePathPatterns(patterns) {
   return compiledPatterns;
 }
 
+function normalizeAccessMode(value = "read") {
+  const rawValue = String(value || "read").trim().toLowerCase();
+
+  if (!rawValue || rawValue === "read" || rawValue === "readable") {
+    return "read";
+  }
+
+  if (rawValue === "write" || rawValue === "writable") {
+    return "write";
+  }
+
+  throw createHttpError(`Unsupported access mode: ${String(value || "")}`, 400);
+}
+
+function ensureProjectPathAccess(projectPath, accessController, accessMode = "read") {
+  if (accessMode === "write") {
+    ensureWritableProjectPath(projectPath, accessController);
+    return;
+  }
+
+  ensureReadableProjectPath(projectPath, accessController);
+}
+
+function canAccessProjectPath(projectPath, accessController, accessMode = "read") {
+  if (accessMode === "write") {
+    return accessController.canWriteProjectPath(projectPath);
+  }
+
+  return accessController.canReadProjectPath(projectPath);
+}
+
 function listReadableGroupIds(username, groupIndex) {
   const normalizedUsername = normalizeEntityId(username);
   const orderedGroups =
@@ -193,6 +229,36 @@ function createReadableOwnerScopes(options = {}) {
   }
 
   return ownerScopes;
+}
+
+function createWritableOwnerScopes(options = {}) {
+  const accessController = createAppAccessController({
+    groupIndex: options.groupIndex,
+    runtimeParams: options.runtimeParams,
+    username: options.username
+  });
+  const ownerRootPaths = new Set();
+
+  for (const projectPath of getSortedProjectPaths(options.watchdog)) {
+    const pathInfo = parseAppProjectPath(projectPath);
+
+    if (!pathInfo || pathInfo.kind !== "owner-path" || !["L1", "L2"].includes(pathInfo.layer)) {
+      continue;
+    }
+
+    const ownerProjectPath = `/app/${pathInfo.layer}/${pathInfo.ownerId}/`;
+
+    if (accessController.canWriteProjectPath(ownerProjectPath)) {
+      ownerRootPaths.add(ownerProjectPath);
+    }
+  }
+
+  return [...ownerRootPaths]
+    .sort((left, right) => left.localeCompare(right))
+    .map((rootPath, rank) => ({
+      rank,
+      rootPath
+    }));
 }
 
 function findOwnerScope(projectPath, ownerScopes) {
@@ -273,8 +339,18 @@ function ensureReadableProjectPath(projectPath, accessController) {
 }
 
 function ensureWritableProjectPath(projectPath, accessController) {
+  if (isReservedAppProjectPath(projectPath)) {
+    throw createHttpError("App-file access to Git metadata is not allowed.", 403);
+  }
+
   if (!accessController.canWriteProjectPath(projectPath)) {
     throw createHttpError("Write access denied.", 403);
+  }
+}
+
+function ensurePublicAppProjectPath(projectPath) {
+  if (isReservedAppProjectPath(projectPath)) {
+    throw createHttpError("App-file access to Git metadata is not allowed.", 403);
   }
 }
 
@@ -405,6 +481,7 @@ function normalizeReadRequests(options = {}) {
       throw createHttpError(`Expected a file path: ${requestedPath}`, 400);
     }
 
+    ensurePublicAppProjectPath(resolvedPath.projectPath);
     ensureReadableProjectPath(resolvedPath.projectPath, accessController);
 
     return {
@@ -471,6 +548,7 @@ function resolveReadableExistingAppPath(options = {}) {
     throw createHttpError(`Expected a file path: ${requestedPath}`, 400);
   }
 
+  ensurePublicAppProjectPath(resolvedPath.projectPath);
   ensureReadableProjectPath(resolvedPath.projectPath, accessController);
 
   return {
@@ -568,6 +646,7 @@ function normalizeWriteRequests(options = {}) {
     }
 
     seenProjectPaths.add(normalizedProjectPath);
+    ensurePublicAppProjectPath(normalizedProjectPath);
     ensureWritableProjectPath(normalizedProjectPath, accessController);
 
     if (isDirectory) {
@@ -584,7 +663,8 @@ function normalizeWriteRequests(options = {}) {
           options.runtimeParams
         ),
         isDirectory: true,
-        path: toAppRelativePath(normalizedProjectPath)
+        path: toAppRelativePath(normalizedProjectPath),
+        projectPath: normalizedProjectPath
       };
     }
 
@@ -603,7 +683,8 @@ function normalizeWriteRequests(options = {}) {
       buffer,
       encoding,
       isDirectory: false,
-      path: toAppRelativePath(normalizedProjectPath)
+      path: toAppRelativePath(normalizedProjectPath),
+      projectPath: normalizedProjectPath
     };
   });
 }
@@ -630,6 +711,14 @@ function writeAppFiles(options = {}) {
       path: request.path
     };
   });
+
+  recordAppPathMutations(
+    {
+      projectRoot: options.projectRoot,
+      runtimeParams: options.runtimeParams
+    },
+    requests.map((request) => request.projectPath)
+  );
 
   return {
     bytesWritten: totalBytesWritten,
@@ -697,6 +786,8 @@ function normalizeTransferRequests(options = {}, actionType) {
       throw createHttpError(`Path not found: ${requestedFromPath}`, 404);
     }
 
+    ensurePublicAppProjectPath(resolvedSourcePath.projectPath);
+
     if (actionType === "copy") {
       ensureReadableProjectPath(resolvedSourcePath.projectPath, accessController);
     } else {
@@ -713,6 +804,8 @@ function normalizeTransferRequests(options = {}, actionType) {
     if (!destinationProjectPath) {
       throw createHttpError(`Expected a writable destination path: ${requestedToPath}`, 400);
     }
+
+    ensurePublicAppProjectPath(destinationProjectPath);
 
     if (destinationProjectPath === resolvedSourcePath.projectPath) {
       throw createHttpError(`Source and destination must differ: ${requestedFromPath}`, 400);
@@ -824,6 +917,14 @@ function copyAppPaths(options = {}) {
     };
   });
 
+  recordAppPathMutations(
+    {
+      projectRoot: options.projectRoot,
+      runtimeParams: options.runtimeParams
+    },
+    requests.map((request) => request.destinationProjectPath)
+  );
+
   return {
     count: entries.length,
     entries
@@ -844,6 +945,14 @@ function moveAppPaths(options = {}) {
       toPath: request.toPath
     };
   });
+
+  recordAppPathMutations(
+    {
+      projectRoot: options.projectRoot,
+      runtimeParams: options.runtimeParams
+    },
+    requests.flatMap((request) => [request.sourceProjectPath, request.destinationProjectPath])
+  );
 
   return {
     count: entries.length,
@@ -896,6 +1005,7 @@ function normalizeDeleteRequests(options = {}) {
       throw createHttpError(`Path not found: ${requestedPath}`, 404);
     }
 
+    ensurePublicAppProjectPath(resolvedPath.projectPath);
     ensureWritableProjectPath(resolvedPath.projectPath, accessController);
 
     return {
@@ -941,6 +1051,14 @@ function deleteAppPaths(options = {}) {
     return request.path;
   });
 
+  recordAppPathMutations(
+    {
+      projectRoot: options.projectRoot,
+      runtimeParams: options.runtimeParams
+    },
+    requests.map((request) => request.projectPath)
+  );
+
   return {
     count: paths.length,
     paths
@@ -962,6 +1080,13 @@ function isDescendantPath(ancestorDirectoryPath, candidatePath) {
       candidateBase &&
       candidateBase !== ancestorBase &&
       candidateBase.startsWith(`${ancestorBase}/`)
+  );
+}
+
+function isSameOrDescendantPath(ancestorDirectoryPath, candidatePath) {
+  return (
+    stripTrailingSlash(ancestorDirectoryPath) === stripTrailingSlash(candidatePath) ||
+    isDescendantPath(ancestorDirectoryPath, candidatePath)
   );
 }
 
@@ -997,11 +1122,52 @@ function collectAncestorDirectories(targetDirectoryPath, descendantPath, pathInd
 
 function listAppPaths(options = {}) {
   const pathIndex = getPathIndex(options.watchdog);
+  const accessMode = normalizeAccessMode(options.access || (options.writableOnly ? "write" : "read"));
   const accessController = createAppAccessController({
     groupIndex: getGroupIndex(options.watchdog, options.runtimeParams),
     runtimeParams: options.runtimeParams,
     username: options.username
   });
+
+  if (options.gitRepositories) {
+    const baseProjectPath = normalizeAppProjectPath(
+      resolveUserShorthandPath(options.path || "/app/", accessController.username),
+      {
+        allowAppRoot: true,
+        isDirectory: true
+      }
+    );
+    const targetPathInfo = parseAppProjectPath(baseProjectPath);
+
+    if (!baseProjectPath) {
+      throw createHttpError("Path not found.", 404);
+    }
+
+    if (targetPathInfo && targetPathInfo.kind === "owner-path") {
+      ensureProjectPathAccess(baseProjectPath, accessController, accessMode);
+    }
+
+    const repositoryPaths = listLayerHistoryRepositories({
+      access: accessMode,
+      projectRoot: options.projectRoot,
+      runtimeParams: options.runtimeParams,
+      username: options.username,
+      watchdog: options.watchdog
+    })
+      .map((repository) => normalizeAppProjectPath(repository.path, { isDirectory: true }))
+      .filter((projectPath) => projectPath && isSameOrDescendantPath(baseProjectPath, projectPath))
+      .sort((left, right) => left.localeCompare(right))
+      .map((projectPath) => toAppRelativePath(projectPath));
+
+    return {
+      access: accessMode,
+      gitRepositories: true,
+      path: toAppRelativePath(baseProjectPath),
+      paths: repositoryPaths,
+      recursive: true
+    };
+  }
+
   const resolvedPath = resolveExistingProjectPath(
     pathIndex,
     resolveUserShorthandPath(options.path || "/app/", accessController.username)
@@ -1011,10 +1177,13 @@ function listAppPaths(options = {}) {
     throw createHttpError("Path not found.", 404);
   }
 
+  ensurePublicAppProjectPath(resolvedPath.projectPath);
+
   if (!resolvedPath.isDirectory) {
-    ensureReadableProjectPath(resolvedPath.projectPath, accessController);
+    ensureProjectPathAccess(resolvedPath.projectPath, accessController, accessMode);
 
     return {
+      access: accessMode,
       path: toAppRelativePath(resolvedPath.projectPath),
       paths: [toAppRelativePath(resolvedPath.projectPath)],
       recursive: false
@@ -1024,12 +1193,16 @@ function listAppPaths(options = {}) {
   const targetPathInfo = parseAppProjectPath(resolvedPath.projectPath);
 
   if (targetPathInfo && targetPathInfo.kind === "owner-path") {
-    ensureReadableProjectPath(resolvedPath.projectPath, accessController);
+    ensureProjectPathAccess(resolvedPath.projectPath, accessController, accessMode);
   }
 
   const recursive = Boolean(options.recursive);
   const allPaths = Object.keys(pathIndex).sort((left, right) => left.localeCompare(right));
   const accessibleDescendants = allPaths.filter((projectPath) => {
+    if (isReservedAppProjectPath(projectPath)) {
+      return false;
+    }
+
     if (!isDescendantPath(resolvedPath.projectPath, projectPath)) {
       return false;
     }
@@ -1040,7 +1213,7 @@ function listAppPaths(options = {}) {
       return false;
     }
 
-    return accessController.canReadProjectPath(projectPath);
+    return canAccessProjectPath(projectPath, accessController, accessMode);
   });
   const outputPaths = new Set();
 
@@ -1049,20 +1222,26 @@ function listAppPaths(options = {}) {
       outputPaths.add(projectPath);
 
       for (const ancestorPath of collectAncestorDirectories(resolvedPath.projectPath, projectPath, pathIndex)) {
-        outputPaths.add(ancestorPath);
+        if (accessMode === "read" || canAccessProjectPath(ancestorPath, accessController, accessMode)) {
+          outputPaths.add(ancestorPath);
+        }
       }
     }
   } else {
     for (const projectPath of accessibleDescendants) {
       const directChildPath = getDirectChildPath(resolvedPath.projectPath, projectPath, pathIndex);
 
-      if (directChildPath) {
+      if (
+        directChildPath &&
+        (accessMode === "read" || canAccessProjectPath(directChildPath, accessController, accessMode))
+      ) {
         outputPaths.add(directChildPath);
       }
     }
   }
 
   return {
+    access: accessMode,
     path: toAppRelativePath(resolvedPath.projectPath),
     paths: [...outputPaths]
       .sort((left, right) => left.localeCompare(right))
@@ -1073,6 +1252,7 @@ function listAppPaths(options = {}) {
 
 function listAppPathsByPatterns(options = {}) {
   const compiledPatterns = compileFilePathPatterns(options.patterns);
+  const accessMode = normalizeAccessMode(options.access || (options.writableOnly ? "write" : "read"));
   const output = Object.create(null);
 
   for (const { sourcePattern } of compiledPatterns) {
@@ -1083,7 +1263,43 @@ function listAppPathsByPatterns(options = {}) {
     return output;
   }
 
-  const ownerScopes = createReadableOwnerScopes({
+  if (options.gitRepositories) {
+    const repositories = listLayerHistoryRepositories({
+      access: accessMode,
+      projectRoot: options.projectRoot,
+      runtimeParams: options.runtimeParams,
+      username: options.username,
+      watchdog: options.watchdog
+    });
+
+    for (const repository of repositories) {
+      const repositoryPath = normalizePathSegment(repository.path);
+      const syntheticGitPaths = [
+        ".git/",
+        `${stripTrailingSlash(repositoryPath)}/.git/`,
+        `app/${stripTrailingSlash(repositoryPath)}/.git/`
+      ];
+
+      for (const compiledPattern of compiledPatterns) {
+        if (syntheticGitPaths.some((gitPath) => compiledPattern.matcher.test(gitPath))) {
+          output[compiledPattern.sourcePattern].push(repository.path);
+        }
+      }
+    }
+
+    for (const sourcePattern of Object.keys(output)) {
+      output[sourcePattern] = [...new Set(output[sourcePattern])].sort((left, right) => left.localeCompare(right));
+    }
+
+    return output;
+  }
+
+  const ownerScopes = accessMode === "write" ? createWritableOwnerScopes({
+    groupIndex: getGroupIndex(options.watchdog, options.runtimeParams),
+    runtimeParams: options.runtimeParams,
+    username: options.username,
+    watchdog: options.watchdog
+  }) : createReadableOwnerScopes({
     groupIndex: getGroupIndex(options.watchdog, options.runtimeParams),
     runtimeParams: options.runtimeParams,
     username: options.username
@@ -1096,6 +1312,10 @@ function listAppPathsByPatterns(options = {}) {
   const pathBuckets = new Map();
 
   for (const projectPath of getSortedProjectPaths(options.watchdog)) {
+    if (isReservedAppProjectPath(projectPath)) {
+      continue;
+    }
+
     const ownerScope = findOwnerScope(projectPath, ownerScopes);
 
     if (!ownerScope) {

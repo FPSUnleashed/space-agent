@@ -200,6 +200,12 @@ html[data-layout="vertical"] .divider-handle {
   max-width: 100%;
 }
 
+.admin-tab-list {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .admin-tab-button {
   gap: 0;
 }
@@ -229,6 +235,10 @@ html[data-layout="vertical"] .divider-handle {
 .admin-tab-button.is-active .admin-tab-label {
   display: block;
   margin-left: 8px;
+}
+
+.admin-close-button {
+  color: var(--color-text-secondary);
 }
 
 .admin-stage {

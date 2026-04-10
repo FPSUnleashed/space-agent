@@ -27,6 +27,7 @@ If the user wants a reusable app surface, tool UI, settings panel, or workflow s
 
 - The main app is hash-routed.
 - `#/dashboard` resolves to `/mod/_core/dashboard/view.html`.
+- `#/time_travel` resolves to `/mod/_core/time_travel/view.html`.
 - A multi-segment route such as `#/author/repo/path` resolves to `/mod/author/repo/path/view.html`.
 - If the final route segment already ends in `.html`, the router resolves directly to that file under `/mod/...`.
 - Query parameters stay attached to the resolved route target.

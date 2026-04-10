@@ -24,6 +24,7 @@ Use this skill when the task changes browser runtime behavior, framework-backed 
 - The runtime installs onto `globalThis.space`.
 - `initFw.js` runs the extensible framework bootstrap step at `_core/framework/initializer.js/initialize` before Alpine startup.
 - Use `_core/framework/initializer.js/initialize/end` for once-per-page shell setup such as analytics bootstrap or `document.head` tag injection instead of editing page shells.
+- Framework-backed pages centrally handle same-origin `/` and `/admin` opens through normal `target="_blank"` link clicks and `window.open(..., "_blank")` by granting the child window the current tab's `/enter` access marker before navigation; context-menu, middle-click, and modifier-key browser opens stay unmodified and still route through `/enter`.
 - Current shared runtime surface includes:
   - `space.api`
   - `space.config`

@@ -20,7 +20,7 @@ The route is:
 #/huggingface
 ```
 
-This route is also advertised to the dashboard pages index through `_core/huggingface/ext/pages/huggingface.yaml`, using the shorthand manifest path `huggingface`.
+This route is also advertised to the dashboard pages index through `_core/huggingface/ext/pages/huggingface.yaml`, using the title `Local LLM` and the shorthand manifest path `huggingface`.
 
 The router resolves that to:
 
@@ -44,7 +44,7 @@ The page owns:
 - a simple testing chat with system prompt, user messages, streamed assistant replies, stop, and clear-chat
 - compact response metrics inline under each assistant reply
 
-When the browser has no saved local Hugging Face models and no persisted auto-reload target, the model input prefills `onnx-community/gemma-4-E4B-it-ONNX` as the empty-state suggestion. The default generation cap is `16384` max new tokens unless the user changes it.
+When the browser has no saved local Hugging Face models and no persisted auto-reload target, the routed testing-page model input prefills `onnx-community/gemma-4-E4B-it-ONNX` as the empty-state suggestion. Admin and onscreen chat local settings reuse that same default when their selected model is blank, no model is loaded, and the shared saved-model list is empty. The default generation cap is `16384` max new tokens unless the user changes it.
 
 This is not a general agent surface. It does not expose tool execution, queueing, attachments, persisted conversations, or backend orchestration.
 
@@ -55,7 +55,7 @@ This is not a general agent surface. It does not expose tool execution, queueing
 The ownership split is:
 
 - `view.html` mounts the route shell, binds to the Alpine store, and imports the standalone config sidebar through `<x-component>`
-- `config-sidebar.html` owns the standalone model-loading sidebar component used by both the routed page and the admin-agent local modal
+- `config-sidebar.html` owns the standalone model-loading sidebar component used by the routed page, the admin-agent local modal, and the onscreen-agent local modal
 - `manager.js` owns the singleton worker lifecycle, saved-model registry, persisted last-loaded selection, live model state, and cross-surface stream control within one browser context
 - `store.js` owns the routed page's local chat UI state and mirrors the shared manager state into Alpine
 - `huggingface-worker-bootstrap.js` is the tiny startup wrapper that imports the heavy runtime worker and catches import/startup failures
@@ -63,11 +63,11 @@ The ownership split is:
 - `protocol.js` holds the stable message names between the page and the worker
 - `transformers.js` points at the vendored local browser build so the worker references one local module path instead of embedding a live CDN URL inline
 
-`manager.js` also distinguishes an idle unbooted runtime from an active startup. Consumers should use its explicit boot flag for `Starting` UI, not `!isWorkerReady` by itself, so idle status can stay `Idle` until this page actually boots the worker. Its snapshot payloads should stay plain-data and clone-safe so both the routed page and the admin adapter can mirror state without tripping browser clone errors.
+`manager.js` also distinguishes an idle unbooted runtime from an active startup. Consumers should use its explicit boot flag for `Starting` UI, not `!isWorkerReady` by itself, so idle status can stay `Idle` until this page actually boots the worker. Its snapshot payloads should stay plain-data and clone-safe so the routed page, admin adapter, and onscreen adapter can mirror state without tripping browser clone errors.
 
-Admin may also read or refresh the shared saved-model list without booting the worker. Simply opening the admin settings dialog should not auto-start the Hugging Face runtime or auto-reload the persisted model just to populate admin shortcuts.
+Admin and onscreen chat may also read or refresh the shared saved-model list without booting the worker. Simply opening either settings dialog should not auto-start the Hugging Face runtime or auto-reload the persisted model just to populate saved-model shortcuts.
 
-In admin mode, the shared sidebar should show both the currently loaded model and the separately selected repo or dtype pair so the admin selector stays legible even before a load starts.
+In admin and onscreen modes, the shared sidebar should show both the currently loaded model and the separately selected repo or dtype pair so each selector stays legible even before a load starts.
 
 For debugging, both layers log failures aggressively:
 
@@ -78,13 +78,13 @@ For debugging, both layers log failures aggressively:
 - the worker also emits explicit trace markers for major load phases such as runtime import and pipeline load; when the browser only reports a bare worker `error` event, the page can still report the last known phase
 - when a worker dies during startup, the page clears the dead worker instance and queued load state so a later retry can spawn a fresh worker instead of remaining stuck in `Queued`
 - the bootstrap worker exists specifically so heavy worker import/startup failures can be surfaced as at least one explicit trace/log payload before the browser falls back to a generic worker `error` event
-- the worker also accepts optional extra generation `requestOptions` so other local callers such as the admin agent can reuse the same routed worker contract instead of forking a second Hugging Face worker implementation
+- the worker also accepts optional extra generation `requestOptions` so other local callers such as the admin and onscreen agents can reuse the same routed worker contract instead of forking a second Hugging Face worker implementation
 
 The shared progress snapshot keeps long post-download runtime preparation visually below `100%` until the actual `LOAD_COMPLETE` handoff arrives. That avoids a fake-complete bar sitting at `100%` during pipeline finalization.
 
-The worker-side text streamer should also emit deltas on each decoded token advance instead of waiting for space-delimited word finalization, because admin-agent replies often contain code or markdown where word-boundary buffering looks like broken streaming.
+The worker-side text streamer should also emit deltas on each decoded token advance instead of waiting for space-delimited word finalization, because admin-agent and onscreen-agent replies often contain code or markdown where word-boundary buffering looks like broken streaming.
 
-`manager.js` may terminate and recreate the worker to stop an in-flight model download or to unload the currently loaded model. The worker stays module-local, but the live runtime state is no longer route-local. When admin switches to another local provider, it may intentionally unload Hugging Face without an immediate reboot so the browser can actually reclaim GPU memory before WebLLM or another local runtime takes over.
+`manager.js` may terminate and recreate the worker to stop an in-flight model download or to unload the currently loaded model. The worker stays module-local, but the live runtime state is no longer route-local. Admin or onscreen chat may intentionally unload Hugging Face without an immediate reboot so the browser can reclaim GPU memory instead of immediately booting an idle worker again.
 
 ## Model Loading
 
@@ -112,7 +112,7 @@ Important model constraint:
 - the route does not try to discover or validate all compatible repos ahead of time
 - instead, the UI points users to the ONNX Community models browser on Hugging Face
 
-Saved models in the sidebar are just browser-side quick-reuse entries. They are not a browser-cache inventory and should not be treated as authoritative cache state. `manager.js` keeps that saved-model list as shared live state for the routed page and the admin agent within the same browser context, instead of each surface inventing a second local registry.
+Saved models in the sidebar are just browser-side quick-reuse entries. They are not a browser-cache inventory and should not be treated as authoritative cache state. `manager.js` keeps that saved-model list as shared live state for the routed page, the admin agent, and the onscreen agent within the same browser context, instead of each surface inventing a second local registry.
 
 ## Downloads And Caching
 
@@ -130,7 +130,7 @@ Current behavior:
 - saved-model rows now include a discard button that deletes matching Hugging Face repo responses from the browser Cache API and removes the affected saved-model entries from local storage
 - saved-model row actions stay enabled while the route is idle; only real model transitions or an in-flight discard should disable them
 - because the browser cache is repo-scoped while the saved-model list is keyed by model id plus dtype, discarding one entry may also prune other saved entries for the same repo id
-- the same `config-sidebar.html` file also has an `admin` mode used inside the admin agent modal, where it renders a direct repo-id input, dtype selector, saved-model shortcuts, current-model status, live load action or progress, and a button that opens the full Hugging Face testing chat route against the shared manager state
+- the same `config-sidebar.html` file also has `admin` and `onscreen` modes used inside the chat settings modals, where it renders a direct repo-id input, dtype selector, saved-model shortcuts, current-model status, live load action or progress, and a button that opens the full Hugging Face testing chat route against the shared manager state
 
 ## Chat Flow
 

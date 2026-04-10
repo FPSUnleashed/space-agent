@@ -7,6 +7,8 @@ import * as skills from "/mod/_core/onscreen_agent/skills.js";
 import * as storage from "/mod/_core/onscreen_agent/storage.js";
 import * as agentView from "/mod/_core/onscreen_agent/view.js";
 import { renderMarkdown } from "/mod/_core/framework/js/markdown-frontmatter.js";
+import { DEFAULT_MODEL_INPUT, DTYPE_OPTIONS, normalizeHuggingFaceModelInput } from "/mod/_core/huggingface/helpers.js";
+import { getHuggingFaceManager } from "/mod/_core/huggingface/manager.js";
 import { positionPopover } from "/mod/_core/visual/chrome/popover.js";
 import { closeDialog, openDialog } from "/mod/_core/visual/forms/dialog.js";
 import { countTextTokens } from "/mod/_core/framework/js/token-count.js";
@@ -55,6 +57,7 @@ const HIDDEN_COMPOSER_STATUS_TEXTS = new Set([
   "Loading onscreen agent...",
   "Loading default system prompt..."
 ]);
+const huggingfaceManager = getHuggingFaceManager();
 
 function getRuntime() {
   const runtime = globalThis.space;
@@ -611,6 +614,66 @@ function isAbortError(error) {
   return Boolean(error && (error.name === "AbortError" || error.code === 20));
 }
 
+function mapManagerStateToOnscreenState(snapshot = {}) {
+  return {
+    activeDtype: String(snapshot.activeDtype || ""),
+    activeModelId: String(snapshot.activeModelId || ""),
+    error: String(snapshot.error || ""),
+    isLoadingModel: snapshot.isLoadingModel === true,
+    isWorkerBooting: snapshot.isWorkerBooting === true,
+    isWorkerReady: snapshot.isWorkerReady === true,
+    loadProgress: {
+      progress: Number.isFinite(Number(snapshot.loadProgress?.progress))
+        ? Math.max(0, Math.min(1, Number(snapshot.loadProgress.progress)))
+        : 0,
+      status: String(snapshot.loadProgress?.status || ""),
+      stepLabel: String(snapshot.loadProgress?.stepLabel || ""),
+      text: String(snapshot.loadProgress?.stepLabel || ""),
+      timeElapsed: 0
+    },
+    loadingModelLabel: String(snapshot.loadingModelLabel || ""),
+    savedModels: Array.isArray(snapshot.savedModels) ? [...snapshot.savedModels] : [],
+    statusText: String(snapshot.statusText || ""),
+    webgpuSupported: snapshot.webgpuSupported !== false
+  };
+}
+
+function createEmptyHuggingFaceState() {
+  return mapManagerStateToOnscreenState(huggingfaceManager.getSnapshot());
+}
+
+function summarizeOnscreenAgentLlmSelection(settings, huggingfaceState) {
+  const provider = config.normalizeOnscreenAgentLlmProvider(settings?.provider);
+
+  if (provider === config.ONSCREEN_AGENT_LLM_PROVIDER.LOCAL) {
+    const activeModelId = typeof huggingfaceState?.activeModelId === "string" ? huggingfaceState.activeModelId.trim() : "";
+    const configuredModelId = normalizeHuggingFaceModelInput(settings?.huggingfaceModel || "");
+    return configuredModelId || activeModelId || "No model";
+  }
+
+  return agentView.summarizeLlmConfig(settings?.apiEndpoint || "", settings?.model || "");
+}
+
+function isHuggingFaceSelectionMatch(left = {}, right = {}) {
+  return (
+    normalizeHuggingFaceModelInput(left?.modelId || left?.modelInput || "") ===
+      normalizeHuggingFaceModelInput(right?.modelId || right?.modelInput || "") &&
+    String(left?.dtype || "").trim() === String(right?.dtype || "").trim()
+  );
+}
+
+function getHuggingFaceSelectionValue(modelId, dtype) {
+  return config.createOnscreenAgentHuggingFaceSelectionValue(modelId, dtype);
+}
+
+function parseHuggingFaceSelectionValue(value) {
+  return config.parseOnscreenAgentHuggingFaceSelectionValue(value);
+}
+
+function getConfiguredLocalProviderLabel() {
+  return "Hugging Face";
+}
+
 function clearTimer(timerId) {
   if (timerId) {
     window.clearTimeout(timerId);
@@ -904,6 +967,8 @@ const model = {
   streamingRenderFrame: 0,
   dragMoveHandler: null,
   dragEndHandler: null,
+  huggingface: createEmptyHuggingFaceState(),
+  huggingfaceManagerUnsubscribe: null,
   historyResizeMoveHandler: null,
   historyResizeEndHandler: null,
   viewportVisibilityCheckTimer: 0,
@@ -916,16 +981,24 @@ const model = {
   settings: {
     apiEndpoint: "",
     apiKey: "",
+    huggingfaceDtype: config.DEFAULT_ONSCREEN_AGENT_SETTINGS.huggingfaceDtype,
+    huggingfaceModel: "",
+    localProvider: config.DEFAULT_ONSCREEN_AGENT_SETTINGS.localProvider,
     maxTokens: config.DEFAULT_ONSCREEN_AGENT_SETTINGS.maxTokens,
     model: "",
-    paramsText: ""
+    paramsText: "",
+    provider: config.DEFAULT_ONSCREEN_AGENT_SETTINGS.provider
   },
   settingsDraft: {
     apiEndpoint: "",
     apiKey: "",
+    huggingfaceDtype: config.DEFAULT_ONSCREEN_AGENT_SETTINGS.huggingfaceDtype,
+    huggingfaceModel: "",
+    localProvider: config.DEFAULT_ONSCREEN_AGENT_SETTINGS.localProvider,
     maxTokens: config.DEFAULT_ONSCREEN_AGENT_SETTINGS.maxTokens,
     model: "",
-    paramsText: ""
+    paramsText: "",
+    provider: config.DEFAULT_ONSCREEN_AGENT_SETTINGS.provider
   },
   status: "Loading onscreen agent...",
   stopRequested: false,
@@ -1070,7 +1143,189 @@ const model = {
   },
 
   get llmSummary() {
-    return agentView.summarizeLlmConfig(this.settings.apiEndpoint, this.settings.model);
+    return summarizeOnscreenAgentLlmSelection(this.settings, this.huggingface);
+  },
+
+  get isSettingsDraftUsingApiProvider() {
+    return config.normalizeOnscreenAgentLlmProvider(this.settingsDraft.provider) === config.ONSCREEN_AGENT_LLM_PROVIDER.API;
+  },
+
+  get isSettingsDraftUsingLocalProvider() {
+    return config.normalizeOnscreenAgentLlmProvider(this.settingsDraft.provider) === config.ONSCREEN_AGENT_LLM_PROVIDER.LOCAL;
+  },
+
+  get huggingfaceSavedModels() {
+    return Array.isArray(this.huggingface.savedModels) ? this.huggingface.savedModels : [];
+  },
+
+  get hasSavedHuggingFaceModels() {
+    return this.huggingfaceSavedModels.length > 0;
+  },
+
+  get onscreenSelectedHuggingFaceModelLabel() {
+    const selectedModelId = normalizeHuggingFaceModelInput(this.settingsDraft.huggingfaceModel || "");
+    const selectedDtype = String(this.settingsDraft.huggingfaceDtype || "").trim();
+
+    if (!selectedModelId) {
+      return "No model selected";
+    }
+
+    return selectedDtype ? `${selectedModelId} · ${selectedDtype}` : selectedModelId;
+  },
+
+  get huggingfaceDtypeOptions() {
+    return DTYPE_OPTIONS;
+  },
+
+  get huggingfaceLoadProgressPercent() {
+    return Math.max(0, Math.min(100, Math.round(Number(this.huggingface.loadProgress?.progress || 0) * 100)));
+  },
+
+  get huggingfaceStatusBadgeText() {
+    if (!this.huggingface.webgpuSupported) {
+      return "Unavailable";
+    }
+
+    if (this.huggingface.error) {
+      return "Error";
+    }
+
+    if (this.huggingface.isWorkerBooting && !this.huggingface.isLoadingModel) {
+      return "Starting";
+    }
+
+    if (this.huggingface.isLoadingModel) {
+      return this.huggingface.loadProgress?.status === "download" ? "Downloading" : "Loading";
+    }
+
+    if (this.huggingface.activeModelId) {
+      return "Ready";
+    }
+
+    return "Idle";
+  },
+
+  get huggingfaceStatusTone() {
+    if (!this.huggingface.webgpuSupported) {
+      return "is-error";
+    }
+
+    if (this.huggingface.error) {
+      return "is-error";
+    }
+
+    if (this.huggingface.isLoadingModel || this.huggingface.isWorkerBooting) {
+      return "is-loading";
+    }
+
+    if (this.huggingface.activeModelId) {
+      return "is-ready";
+    }
+
+    return "is-idle";
+  },
+
+  get huggingfaceSelectedModelStatusText() {
+    const selectedModelId = normalizeHuggingFaceModelInput(this.settingsDraft.huggingfaceModel || "");
+    const selectedDtype = String(this.settingsDraft.huggingfaceDtype || "").trim();
+
+    if (!this.huggingface.webgpuSupported) {
+      return "WebGPU is unavailable in this browser.";
+    }
+
+    if (this.huggingface.isLoadingModel) {
+      return this.huggingface.loadProgress.text || this.huggingface.statusText || "Loading selected model...";
+    }
+
+    if (this.huggingface.isWorkerBooting) {
+      return "Starting Hugging Face runtime...";
+    }
+
+    if (this.huggingface.error) {
+      return this.huggingface.error;
+    }
+
+    if (!selectedModelId || !selectedDtype) {
+      return this.hasSavedHuggingFaceModels
+        ? "Choose a saved model or enter a new Hugging Face repo id."
+        : "Enter a Hugging Face repo id or pick a saved model.";
+    }
+
+    if (
+      this.huggingface.activeModelId === selectedModelId &&
+      this.huggingface.activeDtype === selectedDtype
+    ) {
+      return "Loaded locally and ready for overlay chat.";
+    }
+
+    if (this.huggingface.activeModelId) {
+      return `Loaded model: ${this.huggingface.activeModelId}`;
+    }
+
+    if (this.isSavedHuggingFaceModel(selectedModelId, selectedDtype)) {
+      return "Click Load to reuse this browser-cached model.";
+    }
+
+    return "Click Download and load to fetch this model into the browser, or save and let the first message load it.";
+  },
+
+  get huggingfaceCurrentModelLabel() {
+    return this.huggingface.loadingModelLabel || this.huggingface.activeModelId || "None loaded";
+  },
+
+  get onscreenHuggingFaceCurrentModelActionLabel() {
+    return this.huggingface.isLoadingModel ? "Stop" : "Unload";
+  },
+
+  get onscreenHuggingFaceSelectedModelActionLabel() {
+    const selectedModelId = normalizeHuggingFaceModelInput(this.settingsDraft.huggingfaceModel || "");
+    const selectedDtype = String(this.settingsDraft.huggingfaceDtype || "").trim();
+
+    if (this.huggingface.isLoadingModel) {
+      return "Stop";
+    }
+
+    if (!selectedModelId || !selectedDtype) {
+      return "Load";
+    }
+
+    if (
+      selectedModelId &&
+      selectedDtype &&
+      this.huggingface.activeModelId === selectedModelId &&
+      this.huggingface.activeDtype === selectedDtype
+    ) {
+      return "Unload";
+    }
+
+    if (this.isSavedHuggingFaceModel(selectedModelId, selectedDtype)) {
+      return "Load";
+    }
+
+    return "Download and load";
+  },
+
+  get canOnscreenActOnSelectedHuggingFaceModel() {
+    if (!this.huggingface.webgpuSupported || this.isSending) {
+      return false;
+    }
+
+    if (this.huggingface.isLoadingModel) {
+      return true;
+    }
+
+    return Boolean(
+      normalizeHuggingFaceModelInput(this.settingsDraft.huggingfaceModel || "") &&
+      String(this.settingsDraft.huggingfaceDtype || "").trim()
+    );
+  },
+
+  get canOnscreenUnloadHuggingFaceModel() {
+    return Boolean(
+      !this.isSending &&
+      (this.huggingface.isWorkerReady || this.huggingface.isLoadingModel) &&
+      (this.huggingface.activeModelId || this.huggingface.isLoadingModel)
+    );
   },
 
   get historyTokenSummary() {
@@ -1987,12 +2242,146 @@ const model = {
     });
   },
 
+  async ensureHuggingFaceSubscription() {
+    if (this.huggingfaceManagerUnsubscribe) {
+      this.syncHuggingFaceFromManager();
+      return huggingfaceManager;
+    }
+
+    this.huggingfaceManagerUnsubscribe = huggingfaceManager.subscribe((snapshot) => {
+      this.huggingface = mapManagerStateToOnscreenState(snapshot);
+    });
+    this.syncHuggingFaceFromManager();
+    return huggingfaceManager;
+  },
+
+  syncHuggingFaceFromManager() {
+    this.huggingface = mapManagerStateToOnscreenState(huggingfaceManager.getSnapshot());
+    return this.huggingface;
+  },
+
+  prefillSettingsDraftDefaultHuggingFaceModel() {
+    if (normalizeHuggingFaceModelInput(this.settingsDraft.huggingfaceModel || "")) {
+      return false;
+    }
+
+    const snapshot = huggingfaceManager.getSnapshot();
+    const hasSavedModels = Array.isArray(snapshot.savedModels) && snapshot.savedModels.length > 0;
+    const activeModelId = normalizeHuggingFaceModelInput(snapshot.activeModelId || "");
+    const defaultModelInput = normalizeHuggingFaceModelInput(snapshot.modelInput || "");
+
+    if (hasSavedModels || activeModelId || snapshot.isLoadingModel || defaultModelInput !== DEFAULT_MODEL_INPUT) {
+      return false;
+    }
+
+    this.settingsDraft = {
+      ...this.settingsDraft,
+      huggingfaceModel: DEFAULT_MODEL_INPUT
+    };
+    return true;
+  },
+
+  async ensureActiveLocalRuntime() {
+    await this.ensureHuggingFaceSubscription();
+    return null;
+  },
+
+  hasConfiguredLocalModel(settings = this.settings) {
+    if (config.normalizeOnscreenAgentLlmProvider(settings?.provider) !== config.ONSCREEN_AGENT_LLM_PROVIDER.LOCAL) {
+      return false;
+    }
+
+    return Boolean(
+      normalizeHuggingFaceModelInput(settings?.huggingfaceModel || "") &&
+      String(settings?.huggingfaceDtype || "").trim()
+    );
+  },
+
+  async autoLoadConfiguredLocalModel(settings = this.settings) {
+    if (!this.hasConfiguredLocalModel(settings)) {
+      return false;
+    }
+
+    await this.ensureActiveLocalRuntime(settings);
+
+    const selectedModelId = normalizeHuggingFaceModelInput(settings?.huggingfaceModel || "");
+    const selectedDtype = String(settings?.huggingfaceDtype || "").trim();
+
+    if (!selectedModelId || !selectedDtype) {
+      return false;
+    }
+
+    this.status = this.isSavedHuggingFaceModel(selectedModelId, selectedDtype)
+      ? `Loading ${selectedModelId} for local overlay chat...`
+      : `Downloading and loading ${selectedModelId} for local overlay chat...`;
+    await huggingfaceManager.ensureModelLoaded({
+      dtype: selectedDtype,
+      modelId: selectedModelId,
+      modelInput: selectedModelId
+    });
+    this.syncHuggingFaceFromManager();
+    this.status = `Local ${getConfiguredLocalProviderLabel(settings)} ready.`;
+    return true;
+  },
+
+  isConfiguredLocalModelReady(settings = this.settings) {
+    const provider = config.normalizeOnscreenAgentLlmProvider(settings?.provider);
+
+    if (provider !== config.ONSCREEN_AGENT_LLM_PROVIDER.LOCAL) {
+      return false;
+    }
+
+    const selectedModelId = normalizeHuggingFaceModelInput(settings?.huggingfaceModel || "");
+    const selectedDtype = String(settings?.huggingfaceDtype || "").trim();
+
+    return Boolean(
+      selectedModelId &&
+      selectedDtype &&
+      this.huggingface.isWorkerReady &&
+      !this.huggingface.isLoadingModel &&
+      this.huggingface.activeModelId === selectedModelId &&
+      this.huggingface.activeDtype === selectedDtype
+    );
+  },
+
+  isSavedHuggingFaceModel(modelId, dtype) {
+    const normalizedSelection = {
+      dtype: String(dtype || "").trim(),
+      modelId: String(modelId || "").trim()
+    };
+
+    return this.huggingfaceSavedModels.some((entry) => isHuggingFaceSelectionMatch(entry, normalizedSelection));
+  },
+
+  async refreshHuggingFaceCatalog() {
+    await this.ensureHuggingFaceSubscription();
+    huggingfaceManager.refreshSavedModels();
+    this.syncHuggingFaceFromManager();
+    return this.huggingfaceSavedModels;
+  },
+
+  async warmSettingsDraftLocalProvider() {
+    if (!this.isSettingsDraftUsingLocalProvider) {
+      return false;
+    }
+
+    await this.refreshHuggingFaceCatalog();
+    return true;
+  },
+
   syncCurrentChatRuntime() {
     if (!this.chatRuntime) {
       return;
     }
 
     this.chatRuntime.messages = this.history.map((message) => createRuntimeMessageSnapshot(message));
+  },
+
+  getPromptBuildOptions() {
+    return {
+      localProfile:
+        config.normalizeOnscreenAgentLlmProvider(this.settings.provider) === config.ONSCREEN_AGENT_LLM_PROVIDER.LOCAL
+    };
   },
 
   ensurePromptRuntime() {
@@ -2031,6 +2420,7 @@ const model = {
     const promptInput = await this.ensurePromptRuntime().build({
       defaultSystemPrompt: this.defaultSystemPrompt,
       historyMessages: history,
+      options: this.getPromptBuildOptions(),
       systemPrompt: this.systemPrompt,
       transientSections: this.getPromptTransientSections()
     });
@@ -2042,6 +2432,7 @@ const model = {
   async refreshPromptInputFromHistory(history = this.history) {
     const promptInput = await this.ensurePromptRuntime().updateHistory(history, {
       defaultSystemPrompt: this.defaultSystemPrompt,
+      options: this.getPromptBuildOptions(),
       systemPrompt: this.systemPrompt,
       transientSections: this.getPromptTransientSections()
     });
@@ -2054,6 +2445,7 @@ const model = {
       defaultSystemPrompt: this.defaultSystemPrompt,
       messages: history,
       promptInstance: this.ensurePromptRuntime(),
+      options: this.getPromptBuildOptions(),
       settings: this.settings,
       systemPrompt: this.systemPrompt,
       transientSections: this.getPromptTransientSections()
@@ -2208,6 +2600,12 @@ const model = {
             reflow: true
           });
         });
+
+        if (this.hasConfiguredLocalModel(this.settings)) {
+          void this.autoLoadConfiguredLocalModel(this.settings).catch((error) => {
+            this.status = error.message;
+          });
+        }
       } catch (error) {
         this.ensurePosition({
           persist: false,
@@ -2259,6 +2657,10 @@ const model = {
           persist: true,
           reflow: true
         });
+
+        if (this.huggingfaceManagerUnsubscribe) {
+          void this.refreshHuggingFaceCatalog();
+        }
       };
     }
 
@@ -2407,6 +2809,10 @@ const model = {
       window.clearInterval(this.viewportVisibilityCheckTimer);
       this.viewportVisibilityCheckTimer = 0;
     }
+
+    this.huggingfaceManagerUnsubscribe?.();
+    this.huggingfaceManagerUnsubscribe = null;
+    this.huggingface = createEmptyHuggingFaceState();
 
     this.refs = {
       actionMenu: null,
@@ -3187,12 +3593,135 @@ const model = {
     this.settingsDraft = {
       ...this.settings
     };
+    this.syncHuggingFaceFromManager();
+    this.prefillSettingsDraftDefaultHuggingFaceModel();
+
+    if (!String(this.settingsDraft.huggingfaceDtype || "").trim()) {
+      this.settingsDraft.huggingfaceDtype =
+        DTYPE_OPTIONS[0]?.value || config.DEFAULT_ONSCREEN_AGENT_SETTINGS.huggingfaceDtype;
+    }
+
     this.systemPromptDraft = this.systemPrompt;
+    void this.warmSettingsDraftLocalProvider().catch((error) => {
+      this.status = error.message;
+    });
     openDialog(resolveDialogRef(this.refs, "settingsDialog", SETTINGS_DIALOG_ELEMENT_ID));
   },
 
   closeSettingsDialog() {
     closeDialog(resolveDialogRef(this.refs, "settingsDialog", SETTINGS_DIALOG_ELEMENT_ID));
+  },
+
+  setSettingsProvider(provider) {
+    this.settingsDraft = {
+      ...this.settingsDraft,
+      provider: config.normalizeOnscreenAgentLlmProvider(provider)
+    };
+
+    if (this.isSettingsDraftUsingLocalProvider) {
+      this.prefillSettingsDraftDefaultHuggingFaceModel();
+      void this.warmSettingsDraftLocalProvider().catch((error) => {
+        this.status = error.message;
+      });
+    }
+  },
+
+  handleSettingsHuggingFaceModelInput(value = "") {
+    this.settingsDraft = {
+      ...this.settingsDraft,
+      huggingfaceModel: String(value ?? "")
+    };
+  },
+
+  handleSettingsHuggingFaceDtypeChange(value = this.settingsDraft.huggingfaceDtype) {
+    this.settingsDraft = {
+      ...this.settingsDraft,
+      huggingfaceDtype: String(value || "").trim()
+    };
+  },
+
+  handleSettingsHuggingFaceModelDraftChange(value) {
+    const selection = parseHuggingFaceSelectionValue(value);
+    this.settingsDraft = {
+      ...this.settingsDraft,
+      huggingfaceDtype: selection.dtype,
+      huggingfaceModel: selection.modelId
+    };
+  },
+
+  getSettingsDraftHuggingFaceSelectionValue() {
+    return getHuggingFaceSelectionValue(this.settingsDraft.huggingfaceModel, this.settingsDraft.huggingfaceDtype);
+  },
+
+  getHuggingFaceSavedModelSelectionValue(model) {
+    return getHuggingFaceSelectionValue(model?.modelId, model?.dtype);
+  },
+
+  requestOnscreenHuggingFaceModelUnload() {
+    if (!this.canOnscreenUnloadHuggingFaceModel) {
+      return;
+    }
+
+    void this.ensureHuggingFaceSubscription()
+      .then(() => huggingfaceManager.unloadModel({
+        clearPersistedSelection: false,
+        reboot: false
+      }))
+      .then(() => this.syncHuggingFaceFromManager())
+      .catch((error) => {
+        this.status = error.message;
+      });
+  },
+
+  requestOnscreenSelectedHuggingFaceModelAction() {
+    if (!this.canOnscreenActOnSelectedHuggingFaceModel) {
+      return;
+    }
+
+    const selectedModelId = normalizeHuggingFaceModelInput(this.settingsDraft.huggingfaceModel || "");
+    const selectedDtype = String(this.settingsDraft.huggingfaceDtype || "").trim();
+
+    void this.ensureHuggingFaceSubscription()
+      .then(async () => {
+        if (this.huggingface.isLoadingModel) {
+          this.status = "Stopping Hugging Face model load...";
+          return huggingfaceManager.unloadModel({
+            clearPersistedSelection: false,
+            reboot: false
+          });
+        }
+
+        if (!selectedModelId || !selectedDtype) {
+          throw new Error("Choose a Hugging Face model and dtype.");
+        }
+
+        if (
+          this.huggingface.activeModelId === selectedModelId &&
+          this.huggingface.activeDtype === selectedDtype
+        ) {
+          this.status = `Unloading ${selectedModelId}...`;
+          return huggingfaceManager.unloadModel({
+            clearPersistedSelection: false,
+            reboot: false
+          });
+        }
+
+        this.status = this.isSavedHuggingFaceModel(selectedModelId, selectedDtype)
+          ? `Loading ${selectedModelId} for local overlay chat...`
+          : `Downloading and loading ${selectedModelId} for local overlay chat...`;
+        return huggingfaceManager.loadModel({
+          dtype: selectedDtype,
+          modelInput: selectedModelId
+        });
+      })
+      .then(() => this.syncHuggingFaceFromManager())
+      .catch((error) => {
+        this.status = error.message;
+      });
+  },
+
+  openHuggingFaceConfiguration() {
+    huggingfaceManager.openConfiguration();
   },
 
   resetSettingsDraftToDefaults() {
@@ -3207,6 +3736,8 @@ const model = {
   },
 
   async saveSettingsFromDialog() {
+    const provider = config.normalizeOnscreenAgentLlmProvider(this.settingsDraft.provider);
+    const localProvider = config.normalizeOnscreenAgentLocalProvider(this.settingsDraft.localProvider);
     const paramsText = typeof this.settingsDraft.paramsText === "string" ? this.settingsDraft.paramsText.trim() : "";
     const draftPrompt = typeof this.systemPromptDraft === "string" ? this.systemPromptDraft.trim() : "";
     let maxTokens = config.DEFAULT_ONSCREEN_AGENT_SETTINGS.maxTokens;
@@ -3214,6 +3745,15 @@ const model = {
     try {
       maxTokens = config.parseOnscreenAgentMaxTokens(this.settingsDraft.maxTokens);
       llmParams.parseOnscreenAgentParamsText(paramsText);
+
+      if (provider === config.ONSCREEN_AGENT_LLM_PROVIDER.LOCAL) {
+        const huggingfaceModel = normalizeHuggingFaceModelInput(this.settingsDraft.huggingfaceModel || "");
+        const huggingfaceDtype = String(this.settingsDraft.huggingfaceDtype || "").trim();
+
+        if (!huggingfaceModel || !huggingfaceDtype) {
+          throw new Error("Choose a Hugging Face model and dtype before saving.");
+        }
+      }
     } catch (error) {
       this.status = error.message;
       return;
@@ -3222,9 +3762,13 @@ const model = {
     this.settings = {
       apiEndpoint: (this.settingsDraft.apiEndpoint || "").trim(),
       apiKey: (this.settingsDraft.apiKey || "").trim(),
+      huggingfaceDtype: (this.settingsDraft.huggingfaceDtype || "").trim(),
+      huggingfaceModel: normalizeHuggingFaceModelInput(this.settingsDraft.huggingfaceModel || ""),
+      localProvider,
       maxTokens,
       model: (this.settingsDraft.model || "").trim(),
-      paramsText
+      paramsText,
+      provider
     };
     this.systemPrompt = draftPrompt;
     this.systemPromptDraft = draftPrompt;
@@ -3232,8 +3776,16 @@ const model = {
     try {
       await this.refreshRuntimeSystemPrompt();
       await this.persistConfig();
-      this.status = "Chat settings updated.";
+      this.status = provider === config.ONSCREEN_AGENT_LLM_PROVIDER.LOCAL
+        ? `Local ${getConfiguredLocalProviderLabel(this.settings)} settings updated. Preparing the selected model in the background.`
+        : "API chat settings updated.";
       this.closeSettingsDialog();
+
+      if (provider === config.ONSCREEN_AGENT_LLM_PROVIDER.LOCAL) {
+        void this.autoLoadConfiguredLocalModel(this.settings).catch((error) => {
+          this.status = error.message;
+        });
+      }
     } catch (error) {
       this.status = error.message;
     }
@@ -3504,7 +4056,24 @@ const model = {
   },
 
   async streamAssistantResponse(requestMessages, assistantMessage, preparedRequest) {
-    this.status = "Thinking...";
+    let hasSeenDelta = false;
+    const usingLocalProvider =
+      config.normalizeOnscreenAgentLlmProvider(this.settings.provider) === config.ONSCREEN_AGENT_LLM_PROVIDER.LOCAL;
+
+    if (usingLocalProvider) {
+      const localModelReady = this.isConfiguredLocalModelReady(this.settings);
+      this.status = localModelReady ? "Running local LLM..." : "Loading local LLM...";
+      await this.ensureActiveLocalRuntime(this.settings);
+
+      if (!hasSeenDelta) {
+        this.status = this.isConfiguredLocalModelReady(this.settings)
+          ? "Running local LLM..."
+          : "Loading local LLM...";
+      }
+    } else {
+      this.status = "Thinking...";
+    }
+
     const controller = new AbortController();
     this.activeRequestController = controller;
     let responseMeta = null;
@@ -3513,6 +4082,14 @@ const model = {
       responseMeta = await agentApi.streamOnscreenAgentCompletion({
         preparedRequest,
         onDelta: (delta) => {
+          if (!hasSeenDelta) {
+            hasSeenDelta = true;
+
+            if (this.isFullMode) {
+              this.status = "Streaming response...";
+            }
+          }
+
           this.queueStreamingDelta(assistantMessage, delta);
         },
         signal: controller.signal
@@ -3639,6 +4216,10 @@ const model = {
       const compactPrompt = await agentLlm.fetchOnscreenAgentHistoryCompactPrompt({
         mode
       });
+      if (config.normalizeOnscreenAgentLlmProvider(this.settings.provider) === config.ONSCREEN_AGENT_LLM_PROVIDER.LOCAL) {
+        await this.ensureActiveLocalRuntime(this.settings);
+      }
+
       let trimmedHistoryText = historyText;
 
       for (let attempt = 0; attempt < MAX_COMPACT_TRIM_ATTEMPTS; attempt += 1) {

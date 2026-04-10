@@ -40,6 +40,7 @@ Current session rules:
 - the cookie is `HttpOnly`, `SameSite=Strict`, scoped to `/`, and carries a 30-day max age
 - login uses the shared challenge and proof flow from `service.js`
 - successful login writes a backend-keyed session verifier plus signed metadata into `meta/logins.json` and refreshes the watchdog
+- when `CUSTOMWARE_GIT_HISTORY` is enabled, login, logout, verifier migration, user creation, and password reset writes may schedule the affected user's debounced local-history check, but `meta/password.json` and `meta/logins.json` are ignored by the L2 history repo and preserved during rollback
 - session records include signed metadata and an absolute expiry timestamp
 - session revocation deletes the stored session entry and refreshes the watchdog
 - unsigned or expired session records are rejected even if they exist on disk
@@ -67,6 +68,7 @@ Current user-index rules:
 Rules:
 
 - user creation initializes the user directory, `meta/`, and `mod/`
+- CLI-owned group assignment for `node space user create --groups ...` belongs in `commands/user.js` and `server/lib/customware/group_files.js`, not in `user_manage.js`; `user_manage.js` should stay focused on user storage and auth files
 - password resets rewrite the sealed verifier and clear active sessions
 - guest users are created under randomized `guest_` usernames
 

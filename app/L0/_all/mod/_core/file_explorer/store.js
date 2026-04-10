@@ -189,6 +189,22 @@ function ensureZipFilename(value) {
   return candidate.toLowerCase().endsWith(".zip") ? candidate : `${candidate}.zip`;
 }
 
+function validateChildName(name) {
+  if (!name) {
+    return "Name must not be empty.";
+  }
+
+  if (name === "." || name === "..") {
+    return "Name must not be a relative path marker.";
+  }
+
+  if (name.includes("/") || name.includes("\\")) {
+    return "Name must not include slashes.";
+  }
+
+  return "";
+}
+
 function formatDownloadErrorMessage(entry, error) {
   const entryLabel = entry?.name || getPathName(entry?.path || "");
 
@@ -211,6 +227,10 @@ const filesModel = {
   clipboardExpanded: false,
   clipboardItems: [],
   clipboardMode: "",
+  createDialogError: "",
+  createDialogKind: "file",
+  createDialogSaving: false,
+  createDraftName: "",
   currentPath: HOME_REQUEST_PATH,
   deleteDialogEntries: [],
   deleteDialogError: "",
@@ -252,6 +272,7 @@ const filesModel = {
   unmount() {
     this.captureCurrentDirectoryState();
     this.closeActionMenu();
+    this.closeCreateDialog();
     this.closeDeleteDialog();
     this.closeEditorDialog();
     this.closeRenameDialog();
@@ -290,6 +311,18 @@ const filesModel = {
     return Boolean(this.clipboardItems.length && this.directoryPath && !this.isWorking);
   },
 
+  get canCreateInCurrentDirectory() {
+    return Boolean(this.directoryPath && !this.isWorking && !this.errorTitle);
+  },
+
+  get canSelectAllEntries() {
+    return Boolean(
+      this.entries.length &&
+      this.selectedEntries.length < this.entries.length &&
+      !this.isWorking
+    );
+  },
+
   get clipboardActionLabel() {
     return this.clipboardMode === "cut" ? "Cut queue" : "Copy queue";
   },
@@ -317,6 +350,20 @@ const filesModel = {
     return this.editorDialogPath ? `Edit ${getPathName(this.editorDialogPath)}` : "Edit file";
   },
 
+  get createDialogPathPreview() {
+    const name = this.createDraftName.trim();
+
+    if (!name || !this.directoryPath) {
+      return this.directoryPath || "";
+    }
+
+    return buildChildPath(this.directoryPath, name, this.createDialogKind === "folder");
+  },
+
+  get createDialogTitle() {
+    return this.createDialogKind === "folder" ? "New folder" : "New file";
+  },
+
   get hasClipboard() {
     return this.clipboardItems.length > 0;
   },
@@ -329,6 +376,7 @@ const filesModel = {
     return (
       this.loading ||
       this.operationBusy ||
+      this.createDialogSaving ||
       this.renameDialogSaving ||
       this.deleteDialogSaving ||
       this.editorDialogLoading ||
@@ -460,6 +508,24 @@ const filesModel = {
     }
   },
 
+  selectAllEntries(options = {}) {
+    if (!this.entries.length) {
+      return;
+    }
+
+    this.selectedPaths = this.entries.map((entry) => entry.path);
+
+    if (this.actionMenuSource?.kind === "entry") {
+      this.closeActionMenu();
+    }
+
+    if (options.focusList) {
+      this.focusList({
+        preventScroll: true
+      });
+    }
+  },
+
   closeActionMenu() {
     this.actionMenuRenderToken += 1;
     this.actionMenuAnchor = null;
@@ -472,6 +538,14 @@ const filesModel = {
     this.deleteDialogEntries = [];
     this.deleteDialogError = "";
     this.deleteDialogSaving = false;
+  },
+
+  closeCreateDialog() {
+    closeDialog(this.refs.createDialog);
+    this.createDialogError = "";
+    this.createDialogKind = "file";
+    this.createDialogSaving = false;
+    this.createDraftName = "";
   },
 
   closeEditorDialog() {
@@ -579,7 +653,7 @@ const filesModel = {
   },
 
   getEntryDomId(path) {
-    return `admin-files-entry-${hashPath(path)}`;
+    return `file-explorer-entry-${hashPath(path)}`;
   },
 
   getOrCreatePathState(path) {
@@ -597,6 +671,10 @@ const filesModel = {
 
   hasEntry(path) {
     return this.entries.some((entry) => entry.path === path);
+  },
+
+  hasEntryNamed(name) {
+    return this.entries.some((entry) => entry.name === name);
   },
 
   handleListKeydown(event) {
@@ -808,6 +886,28 @@ const filesModel = {
     openDialog(this.refs.deleteDialog);
   },
 
+  openCreateDialog(kind) {
+    if (!this.canCreateInCurrentDirectory) {
+      return;
+    }
+
+    this.clearNotice();
+    this.closeActionMenu();
+    this.createDialogError = "";
+    this.createDialogKind = kind === "folder" ? "folder" : "file";
+    this.createDialogSaving = false;
+    this.createDraftName = "";
+    openDialog(this.refs.createDialog);
+  },
+
+  openCreateFileDialog() {
+    this.openCreateDialog("file");
+  },
+
+  openCreateFolderDialog() {
+    this.openCreateDialog("folder");
+  },
+
   async openEditorDialog(entry) {
     if (!entry || entry.isDirectory) {
       return;
@@ -925,7 +1025,7 @@ const filesModel = {
       return this.navigateTo(entry.path, options);
     }
 
-    return this.downloadEntry(entry);
+    return this.openEditorDialog(entry);
   },
 
   async pasteClipboardIntoCurrentDirectory() {
@@ -1196,6 +1296,49 @@ const filesModel = {
     }
   },
 
+  async submitCreateDialog() {
+    const name = this.createDraftName.trim();
+    const isDirectory = this.createDialogKind === "folder";
+    const validationError = validateChildName(name);
+
+    if (this.createDialogSaving) {
+      return;
+    }
+
+    if (!this.directoryPath) {
+      this.createDialogError = "Open a writable folder before creating an item.";
+      return;
+    }
+
+    if (validationError) {
+      this.createDialogError = validationError;
+      return;
+    }
+
+    const nextPath = buildChildPath(this.directoryPath, name, isDirectory);
+
+    if (this.hasEntryNamed(name)) {
+      this.createDialogError = "An item with that name already exists.";
+      return;
+    }
+
+    this.createDialogError = "";
+    this.createDialogSaving = true;
+
+    try {
+      await space.api.fileWrite(nextPath, "", "utf8");
+      this.closeCreateDialog();
+      await this.navigateTo(this.directoryPath || HOME_REQUEST_PATH, {
+        focusList: true,
+        highlightPath: nextPath
+      });
+    } catch (error) {
+      this.createDialogError = readErrorMessage(error);
+    } finally {
+      this.createDialogSaving = false;
+    }
+  },
+
   async submitDraftPath(options = {}) {
     return this.navigateTo(this.draftPath, options);
   },
@@ -1328,6 +1471,6 @@ filesModel.applyDirectoryResult = function applyDirectoryResult(result, options 
   });
 };
 
-const adminFiles = space.fw.createStore("adminFiles", filesModel);
+const fileExplorer = space.fw.createStore("fileExplorer", filesModel);
 
-export { adminFiles };
+export { fileExplorer };

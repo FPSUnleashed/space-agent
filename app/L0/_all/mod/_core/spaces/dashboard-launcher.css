@@ -19,28 +19,36 @@
 }
 
 .dashboard-spaces-launcher-grid {
-  --dashboard-space-grid-gap: 1rem;
+  --dashboard-space-grid-base-gap: 1rem;
+  --dashboard-space-grid-columns: 1;
   --dashboard-space-grid-max-columns: 5;
-  --dashboard-space-card-min-width: 11.75rem;
+  --dashboard-space-card-size: 10.75rem;
+  --dashboard-space-card-tag-rows: 2;
+  --dashboard-space-card-tag-row-height: 1.65rem;
+  --dashboard-space-card-tag-gap: 0.34rem;
   display: grid;
-  grid-template-columns:
-    repeat(
-      auto-fit,
-      minmax(
-        min(
-          100%,
-          max(
-            var(--dashboard-space-card-min-width),
-            calc(
-              (100% - (var(--dashboard-space-grid-max-columns) - 1) * var(--dashboard-space-grid-gap))
-              / var(--dashboard-space-grid-max-columns)
-            )
-          )
-        ),
-        1fr
-      )
-    );
-  gap: var(--dashboard-space-grid-gap);
+  grid-template-columns: repeat(var(--dashboard-space-grid-columns), minmax(0, var(--dashboard-space-card-size)));
+  justify-content: center;
+  align-items: flex-start;
+  column-gap: var(--dashboard-space-grid-base-gap);
+  row-gap: var(--dashboard-space-grid-base-gap);
+  width: fit-content;
+  max-width: 100%;
+  margin-inline: auto;
+}
+
+.dashboard-spaces-launcher-grid.is-filled-stage {
+  grid-template-columns: repeat(var(--dashboard-space-grid-columns), minmax(0, 1fr));
+  justify-content: stretch;
+  width: 100%;
+  margin-inline: 0;
+}
+
+.dashboard-space-slot {
+  display: grid;
+  min-width: 0;
+  justify-items: center;
+  align-items: start;
 }
 
 .dashboard-spaces-launcher-empty {
@@ -91,12 +99,15 @@
 
 .dashboard-space-card {
   position: relative;
-  width: 100%;
-  height: 13.25em;
+  box-sizing: border-box;
+  width: var(--dashboard-space-card-size);
+  height: auto;
+  aspect-ratio: 1 / 1;
   min-width: 0;
-  min-height: 13.25em;
-  max-height: 13.25em;
-  justify-self: stretch;
+  min-height: 0;
+  max-width: 100%;
+  max-height: none;
+  justify-self: center;
   align-self: start;
   overflow: hidden;
   border: 1px solid var(--space-chrome-border);
@@ -167,7 +178,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: flex-start;
-  min-height: 1.65rem;
+  min-height: var(--dashboard-space-card-tag-row-height);
   padding: 0.16rem 0.52rem;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.04);
@@ -203,7 +214,7 @@
 
 .dashboard-space-card-copy h3 {
   margin: 0;
-  font-size: 1.2rem;
+  font-size: 1.08rem;
   line-height: 1.02;
   letter-spacing: -0.035em;
   min-width: 0;
@@ -215,9 +226,14 @@
   grid-area: tags;
   display: flex;
   flex-wrap: wrap;
-  gap: 0.34rem;
+  gap: var(--dashboard-space-card-tag-gap);
   align-content: flex-start;
   align-self: stretch;
+  max-height:
+    calc(
+      (var(--dashboard-space-card-tag-rows) * var(--dashboard-space-card-tag-row-height))
+      + ((var(--dashboard-space-card-tag-rows) - 1) * var(--dashboard-space-card-tag-gap))
+    );
   overflow: hidden;
 }
 

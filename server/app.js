@@ -11,6 +11,7 @@ import {
 } from "./config.js";
 import { loadApiRegistry } from "./lib/api/registry.js";
 import { createAuthService } from "./lib/auth/service.js";
+import { flushGitHistoryCommits } from "./lib/customware/git_history.js";
 import { ensureCustomwareDirectories } from "./lib/customware/layout.js";
 import { createWatchdog } from "./lib/file_watch/watchdog.js";
 import { createTmpWatch, ensureServerTmpDir } from "./lib/tmp/tmp_watch.js";
@@ -166,6 +167,7 @@ async function createAgentServer(overrides = {}) {
       }
     },
     async close() {
+      await flushGitHistoryCommits();
       tmpWatch.stop();
       watchdog.stop();
 

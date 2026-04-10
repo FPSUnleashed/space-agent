@@ -5,6 +5,7 @@ import {
   normalizeEntityId,
   resolveProjectAbsolutePath
 } from "./layout.js";
+import { recordAppPathMutations } from "./git_history.js";
 import {
   parseSimpleYaml,
   serializeSimpleYaml
@@ -42,6 +43,31 @@ function buildGroupConfigAbsolutePath(projectRoot, groupId, runtimeParams = null
   );
 }
 
+function ensureGroupDirectory(projectRoot, groupId, runtimeParams = null) {
+  const normalizedGroupId = normalizeEntityId(groupId);
+  const groupConfigPath = buildGroupConfigAbsolutePath(projectRoot, normalizedGroupId, runtimeParams);
+  const groupDir = path.dirname(groupConfigPath);
+  const existed = fs.existsSync(groupDir);
+
+  fs.mkdirSync(path.join(groupDir, "mod"), { recursive: true });
+
+  if (!existed) {
+    recordAppPathMutations(
+      {
+        projectRoot,
+        runtimeParams
+      },
+      [`/app/${GROUP_WRITE_LAYER}/${normalizedGroupId}/`]
+    );
+  }
+
+  return {
+    groupDir,
+    groupId: normalizedGroupId,
+    layer: GROUP_WRITE_LAYER
+  };
+}
+
 function readGroupConfig(projectRoot, groupId, runtimeParams = null) {
   const filePath = buildGroupConfigAbsolutePath(projectRoot, groupId, runtimeParams);
 
@@ -57,12 +83,20 @@ function readGroupConfig(projectRoot, groupId, runtimeParams = null) {
 }
 
 function writeGroupConfig(projectRoot, groupId, config, runtimeParams = null) {
+  const normalizedGroupId = normalizeEntityId(groupId);
   const filePath = buildGroupConfigAbsolutePath(projectRoot, groupId, runtimeParams);
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(
     filePath,
     serializeSimpleYaml(getNormalizedGroupConfig(config)),
     "utf8"
+  );
+  recordAppPathMutations(
+    {
+      projectRoot,
+      runtimeParams
+    },
+    [`/app/${GROUP_WRITE_LAYER}/${normalizedGroupId}/group.yaml`]
   );
   return filePath;
 }
@@ -79,8 +113,15 @@ function createGroup(projectRoot, groupId, options = {}) {
     fs.rmSync(groupDir, { force: true, recursive: true });
   }
 
-  fs.mkdirSync(path.join(groupDir, "mod"), { recursive: true });
+  ensureGroupDirectory(projectRoot, groupId, runtimeParams);
   writeGroupConfig(projectRoot, groupId, {}, runtimeParams);
+  recordAppPathMutations(
+    {
+      projectRoot,
+      runtimeParams
+    },
+    [`/app/${GROUP_WRITE_LAYER}/${normalizeEntityId(groupId)}/`]
+  );
 
   return {
     groupDir,
@@ -91,7 +132,6 @@ function createGroup(projectRoot, groupId, options = {}) {
 
 function addGroupEntry(projectRoot, groupId, entryType, entryId, options = {}) {
   const runtimeParams = options.runtimeParams || null;
-  const config = readGroupConfig(projectRoot, groupId, runtimeParams);
   const normalizedEntryType = String(entryType || "").trim().toLowerCase();
   const key =
     normalizedEntryType === "group"
@@ -107,6 +147,9 @@ function addGroupEntry(projectRoot, groupId, entryType, entryId, options = {}) {
   if (!key) {
     throw new Error(`Unsupported group entry type: ${String(entryType || "")}`);
   }
+
+  ensureGroupDirectory(projectRoot, groupId, runtimeParams);
+  const config = readGroupConfig(projectRoot, groupId, runtimeParams);
 
   return writeGroupConfig(projectRoot, groupId, {
     ...config,
@@ -147,6 +190,7 @@ function removeGroupEntry(projectRoot, groupId, entryType, entryId, options = {}
 export {
   buildGroupConfigAbsolutePath,
   createGroup,
+  ensureGroupDirectory,
   getNormalizedGroupConfig,
   readGroupConfig,
   addGroupEntry,

@@ -34,7 +34,9 @@ Current module-local docs in the app tree:
 - `app/L0/_all/mod/_core/router/AGENTS.md`
 - `app/L0/_all/mod/_core/skillset/AGENTS.md`
 - `app/L0/_all/mod/_core/spaces/AGENTS.md`
+- `app/L0/_all/mod/_core/time_travel/AGENTS.md`
 - `app/L0/_all/mod/_core/visual/AGENTS.md`
+- `app/L0/_all/mod/_core/file_explorer/AGENTS.md`
 - `app/L0/_all/mod/_core/huggingface/AGENTS.md`
 - `app/L0/_all/mod/_core/webllm/AGENTS.md`
 - `app/L0/_all/mod/_core/admin/AGENTS.md`
@@ -110,14 +112,16 @@ Current major first-party modules under `app/L0/_all/mod/_core/`:
 - `router/`: root routed shell for the authenticated app; route-level frame width, height or scroll policy, and other shell-owned layout overrides belong here rather than in feature modules, but routed pages own their own content padding
 - `admin/`: firmware-backed admin shell and panels
 - `agent/`: routed first-party agent information and user-local personality include editor, kept self-contained inside the module and advertised to the dashboard through `ext/pages/agent.yaml`
+- `file_explorer/`: reusable app-file browser component, routed Files page, dashboard manifest, and top-right menu item
 - `documentation/`: supplemental agent-facing documentation docs, the focused-read documentation helper, and the documentation skill that carries the top-level docs map
 - `pages/`: headless page-manifest discovery plus the dashboard-injected pages section, backed by permission-aware `ext/pages/*.yaml` metadata loaded through the shared extension resolver
 - `promptinclude/`: headless promptinclude discovery and onscreen-agent prompt injection for readable `*.system.include.md` and `*.transient.include.md` app files
 - `onscreen_agent/`: floating routed overlay agent and the first-party user-facing agent surface
-- `onscreen_menu/`: top-right routed shell menu extension
+- `onscreen_menu/`: top-right routed shell menu extension, Home shortcut to the empty default route, and `_core/onscreen_menu/items` feature-item seam
 - `skillset/`: first-party reusable onscreen skill packs plus browser helper scripts that those skills import through stable `/mod/...` paths
-- `webllm/`: routed browser-only WebLLM test surface with a module-local worker, vendored browser runtime, compact searchable prebuilt model loading, expert-only compiled custom model loading, and simple throughput reporting
-- `huggingface/`: routed browser-only Hugging Face Transformers.js test surface with a module-local singleton runtime manager and worker, direct Hub model loading, a vendored local browser runtime for upstream testing, shared saved-model state reused by the admin agent in the same browser context, and simple throughput reporting
+- `webllm/`: unlisted routed browser-only WebLLM test surface with a module-local worker, vendored browser runtime, compact searchable prebuilt model loading, expert-only compiled custom model loading, and simple throughput reporting
+- `huggingface/`: dashboard-listed Local LLM page backed by a routed browser-only Hugging Face Transformers.js test surface, with a module-local singleton runtime manager and worker, direct Hub model loading, a vendored local browser runtime for upstream testing, shared saved-model state reused by the admin and onscreen agents in the same browser context, and simple throughput reporting
+- `time_travel/`: routed writable-layer history surface that defaults to the authenticated user's local Git commits, can switch to write-accessible `L1` or `L2` history repositories through a permission-aware picker, filters by changed file, opens per-file diffs, and calls the server rollback or revert APIs after explicit confirmation
 - `dashboard/`, `dashboard_welcome/`, `spaces/`, and the `space/` compatibility shim: current routed feature surfaces and dashboard-injected surfaces under the router
 
 ## Layer Rules And Module Model
@@ -140,6 +144,7 @@ Current major first-party modules under `app/L0/_all/mod/_core/`:
 - page shells may clamp module and extension resolution with `meta[name="space-max-layer"]`; the current admin shell sets `0`
 - page shells may also receive injected `meta[name="space-config"]` tags for runtime parameters marked `frontend_exposed`
 - authenticated app-file APIs operate on logical app-rooted paths such as `L2/alice/user.yaml` or `/app/L2/alice/user.yaml`, and supported APIs may use `~` or `~/...` as shorthand for the authenticated user's `L2/<username>/...`
+- optional `space.api.gitHistoryList(...)`, `space.api.gitHistoryDiff(...)`, `space.api.gitHistoryPreview(...)`, `space.api.gitHistoryRollback(...)`, and `space.api.gitHistoryRevert(...)` helpers expose server-owned writable-layer local history when `CUSTOMWARE_GIT_HISTORY` is enabled
 - first-party application development should happen primarily under `app/L0/_all/mod/_core/`
 - use `L1` and `L2` for layered overrides and customware behavior, not as the main home for repo-owned first-party features
 
@@ -151,7 +156,7 @@ Current boot flow:
 
 1. A page shell in `server/pages/` loads shared framework CSS and `/mod/_core/framework/js/initFw.js`.
 2. The shell exposes one top-level HTML anchor in the body.
-3. `initFw.js` installs the runtime, runs the extensible framework bootstrap step in `_core/framework/js/initializer.js`, then installs Alpine helpers and shared bootstrap behavior.
+3. `initFw.js` installs the runtime, runs the extensible framework bootstrap step in `_core/framework/js/initializer.js`, including framework-wide same-origin `_blank` page-open handling, then installs Alpine helpers and shared bootstrap behavior.
 4. The first mounted module owns the next seam and exposes more anchors or wrapped functions.
 5. Other modules compose into those explicit seams instead of patching private internals.
 
@@ -178,6 +183,7 @@ HTML extension anchors:
 - HTML callers name only the seam; the runtime loads `<x-extension>` tags from the module's `ext/html/` tree automatically
 - thin extension files should usually mount the real component from the module root instead of containing the entire feature directly
 - root page anchors such as `body/start` and `page/admin/body/start` are fixed shell contracts; module-owned anchors should be named after the owning module path, for example `_core/router/shell_start`
+- `_core/onscreen_menu` owns a persistent Home button that routes to the empty route `#/` so the router default decides the home screen; `_core/onscreen_menu/items` is the top-right menu item seam for non-Home feature buttons, whose modules contribute thin button adapters there with numeric `data-order` values while `_core/onscreen_menu` sorts them automatically and keeps only the auth exit action local after the seam
 
 JS extension hooks:
 
@@ -187,6 +193,7 @@ JS extension hooks:
 - JS hook files live at `mod/<author>/<repo>/ext/js/<extension-point>/*.js` or `*.mjs`
 - JS callers name only the seam; the runtime loads hooks from the module's `ext/js/` tree automatically
 - framework-backed pages expose `_core/framework/initializer.js/initialize`; prefer its `/end` hook for once-per-page shell setup such as analytics bootstrap or `document.head` injections instead of editing page shells
+- framework-backed pages centrally grant `/enter` tab access to same-origin `/` and `/admin` windows opened through normal `target="_blank"` link clicks or `window.open(..., "_blank")`; manual browser opens such as context-menu, middle-click, or modifier-key opens are not intercepted and still route through `/enter`
 - use `callJsExtensions("name", data)` only when the seam is an explicit event rather than a function lifecycle
 - `_core/login_hooks` is a first-party example of an explicit event seam: it runs from `_core/framework/initializer.js/initialize/end`, checks `~/meta/login_hooks.json`, then dispatches `_core/login_hooks/first_login` once per user and `_core/login_hooks/any_login` when the authenticated shell was reached from `/login`
 - when a feature module needs onscreen-agent prompt shaping, execution-plan validation, or other module-specific chat behavior for its own helpers, add an `ext/js/_core/onscreen_agent/...` hook from the owning module; do not hardcode feature-specific policy into `_core/onscreen_agent`
@@ -284,16 +291,18 @@ Detailed visual subsystem rules now live in `app/L0/_all/mod/_core/visual/AGENTS
 - `dashboard_welcome/` owns the dismissible dashboard welcome panel and bundled demo spaces; see `app/L0/_all/mod/_core/dashboard_welcome/AGENTS.md`
 - `documentation/` owns the supplemental documentation tree, the documentation skill that carries its compact docs map, and the focused docs helper used by the onscreen agent; see `app/L0/_all/mod/_core/documentation/AGENTS.md`
 - `agent/` owns the routed agent information page, its local avatar-card styling, and the user-local personality include editor for `~/conf/personality.system.include.md`; see `app/L0/_all/mod/_core/agent/AGENTS.md`
+- `file_explorer/` owns the reusable app-file browser component, routed Files page, dashboard page manifest, and top-right menu item; see `app/L0/_all/mod/_core/file_explorer/AGENTS.md`
 - `promptinclude/` owns readable prompt-include discovery through `file_paths` plus the onscreen-agent hooks that inject stable prompt-include instructions into the system prompt, append readable `*.system.include.md` file bodies there, and inject discovered `*.transient.include.md` file bodies into transient context; see `app/L0/_all/mod/_core/promptinclude/AGENTS.md`
 - `visual/` owns the shared visual system, reusable presentation primitives, and shared icon-selection modal helpers; see `app/L0/_all/mod/_core/visual/AGENTS.md`
-- `webllm/` owns the routed WebLLM browser-inference test surface, its route-local worker, and its vendored WebLLM browser runtime; see `app/L0/_all/mod/_core/webllm/AGENTS.md`
-- `huggingface/` owns the routed Hugging Face Transformers.js browser-inference test surface, its route-local worker, and its vendored local browser-runtime shim; see `app/L0/_all/mod/_core/huggingface/AGENTS.md`
+- `webllm/` owns the unlisted routed WebLLM browser-inference test surface, its route-local worker, and its vendored WebLLM browser runtime; see `app/L0/_all/mod/_core/webllm/AGENTS.md`
+- `huggingface/` owns the dashboard-listed Local LLM page, the routed Hugging Face Transformers.js browser-inference test surface, its shared browser-context manager and worker used by local admin or onscreen chat, and its vendored local browser-runtime shim; see `app/L0/_all/mod/_core/huggingface/AGENTS.md`
 - `admin/` owns the firmware-backed admin shell, panels, and admin-specific skills/runtime glue; see `app/L0/_all/mod/_core/admin/AGENTS.md`
 - `admin/views/agent/` owns the admin-side agent surface; see `app/L0/_all/mod/_core/admin/views/agent/AGENTS.md`
-- `admin/views/files/` owns the firmware-backed file browser; see `app/L0/_all/mod/_core/admin/views/files/AGENTS.md`
+- `admin/views/files/` owns the admin Files tab adapter that mounts `_core/file_explorer`; see `app/L0/_all/mod/_core/admin/views/files/AGENTS.md`
 - `admin/views/modules/` owns the firmware-backed modules panel; see `app/L0/_all/mod/_core/admin/views/modules/AGENTS.md`
 - `onscreen_agent/` owns the floating routed overlay agent; see `app/L0/_all/mod/_core/onscreen_agent/AGENTS.md`
-- `onscreen_menu/` owns the routed shell menu extension; see `app/L0/_all/mod/_core/onscreen_menu/AGENTS.md`
+- `onscreen_menu/` owns the routed shell menu extension and feature-owned item seam; see `app/L0/_all/mod/_core/onscreen_menu/AGENTS.md`
+- `time_travel/` owns the routed Time Travel page for paginated writable-layer history, repository selection, file filters, diffs, previewed travel, and revert actions; see `app/L0/_all/mod/_core/time_travel/AGENTS.md`
 - `spaces/` owns the routed spaces canvas, empty-canvas prompt, widget SDK and widget-size ceilings, and persisted centered-coordinate space runtime plus dashboard-facing space metadata such as title, icon, color, and agent instructions; see `app/L0/_all/mod/_core/spaces/AGENTS.md`
 - `pages/` owns `ext/pages/*.yaml` manifest discovery and the dashboard-facing page launcher section; see `app/L0/_all/mod/_core/pages/AGENTS.md`
 

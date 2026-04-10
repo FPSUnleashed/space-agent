@@ -68,6 +68,20 @@ Rules:
 - do not skip an obvious free slot just to chase a more compact aspect ratio later
 - center the packed result back onto the canvas after placement
 
+## Dashboard Launcher
+
+The dashboard-facing spaces launcher keeps its cards visually fixed instead of using stretch-to-fill widths.
+
+Rules:
+
+- cards stay square at one shared size until the viewport is too narrow to hold that size
+- when the current card count is still below the row capacity, that single row is centered within the launcher
+- row capacity is based on fixed card size plus a required minimum horizontal gap, so narrow layouts drop columns before cards collide and full dashboard width can still host five cards when it truly fits
+- once the launcher reaches the current row capacity, it uses one explicit left-to-right column stage with stretched parent slots while the cards inside those slots stay square
+- wrapped remainder rows stay left-aligned and reuse the same horizontal spacing as the full row above them through that shared slot stage
+- widget-name pills are capped to two visible rows inside each card
+- the launcher still caps wide-screen rows at five cards
+
 ## Widget Renderer Contract
 
 Preferred renderer shape:

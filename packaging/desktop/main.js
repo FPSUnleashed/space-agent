@@ -1,26 +1,35 @@
 const path = require("node:path");
-const { app, BrowserWindow } = require("electron");
-const { createAgentServer } = require("../../server/app");
+const { pathToFileURL } = require("node:url");
+const { app, BrowserWindow, dialog } = require("electron");
+const { autoUpdater } = require("electron-updater");
+
+const PROJECT_ROOT = path.resolve(__dirname, "../..");
+const SERVER_APP_PATH = path.join(PROJECT_ROOT, "server", "app.js");
+const BASE_WINDOW_TITLE = "Space Agent";
 
 let serverRuntime;
 let mainWindow;
 let isQuitting = false;
+let hasPromptedForDownloadedUpdate = false;
+let updateStatusClearTimer = null;
 
 function createDesktopRuntimeParamOverrides() {
-  if (!app.isPackaged) {
-    return {};
+  const overrides = {};
+
+  if (app.isPackaged) {
+    overrides.SINGLE_USER_APP = "true";
+    overrides.CUSTOMWARE_PATH = path.join(app.getPath("userData"), "customware");
   }
 
-  return {
-    SINGLE_USER_APP: "true"
-  };
+  return overrides;
 }
 
-function createDesktopServerOptions() {
+function createDesktopServerOptions(runtimeParamOverrides) {
   return {
     host: "127.0.0.1",
     port: 0,
-    runtimeParamOverrides: createDesktopRuntimeParamOverrides()
+    projectRoot: PROJECT_ROOT,
+    runtimeParamOverrides
   };
 }
 
@@ -39,6 +48,138 @@ function showMainWindow() {
 
   mainWindow.show();
   mainWindow.focus();
+}
+
+function clearUpdateStatusSoon(delayMs = 5000) {
+  if (updateStatusClearTimer) {
+    clearTimeout(updateStatusClearTimer);
+  }
+
+  updateStatusClearTimer = setTimeout(() => {
+    updateStatusClearTimer = null;
+    setDesktopUpdateStatus("");
+  }, delayMs);
+}
+
+function setDesktopUpdateStatus(message, progress = null) {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return;
+  }
+
+  const normalizedMessage = String(message || "").trim();
+  mainWindow.setTitle(normalizedMessage ? `${BASE_WINDOW_TITLE} - ${normalizedMessage}` : BASE_WINDOW_TITLE);
+
+  if (progress === "indeterminate") {
+    mainWindow.setProgressBar(2);
+    return;
+  }
+
+  if (Number.isFinite(progress)) {
+    mainWindow.setProgressBar(Math.max(0, Math.min(1, progress)));
+    return;
+  }
+
+  mainWindow.setProgressBar(-1);
+}
+
+function shouldEnableDesktopAutoUpdate() {
+  return app.isPackaged;
+}
+
+async function promptForDownloadedUpdate(info) {
+  if (hasPromptedForDownloadedUpdate) {
+    return;
+  }
+
+  hasPromptedForDownloadedUpdate = true;
+  const detail = [
+    `Version ${info?.version || "unknown"} is ready to install.`,
+    "Restart now to apply the update, or keep working and install it when you quit."
+  ].join("\n\n");
+  const options = {
+    type: "info",
+    buttons: ["Restart Now", "Later"],
+    defaultId: 0,
+    cancelId: 1,
+    noLink: true,
+    title: "Update Ready",
+    message: "A new Space Agent release has been downloaded.",
+    detail
+  };
+  const window = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+  const { response } = window
+    ? await dialog.showMessageBox(window, options)
+    : await dialog.showMessageBox(options);
+
+  if (response === 0) {
+    setImmediate(() => {
+      autoUpdater.quitAndInstall();
+    });
+  }
+}
+
+function configureDesktopAutoUpdate() {
+  if (!shouldEnableDesktopAutoUpdate()) {
+    return;
+  }
+
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.logger = console;
+
+  autoUpdater.on("checking-for-update", () => {
+    console.log("Checking GitHub Releases for a desktop update...");
+    setDesktopUpdateStatus("Checking for updates...", "indeterminate");
+  });
+
+  autoUpdater.on("update-available", (info) => {
+    console.log(`Desktop update available: ${info.version}`);
+    setDesktopUpdateStatus(`Downloading update ${info.version || ""}`.trim(), 0);
+  });
+
+  autoUpdater.on("update-not-available", () => {
+    console.log("Desktop app is already up to date.");
+    setDesktopUpdateStatus("Up to date");
+    clearUpdateStatusSoon();
+  });
+
+  autoUpdater.on("error", (error) => {
+    console.warn("Desktop auto-update failed.");
+    console.warn(error && (error.stack || error.message || error));
+    setDesktopUpdateStatus("Update check failed");
+    clearUpdateStatusSoon(8000);
+  });
+
+  autoUpdater.on("download-progress", (progress) => {
+    const percent = Number(progress && progress.percent);
+    if (!Number.isFinite(percent)) {
+      setDesktopUpdateStatus("Downloading update...", "indeterminate");
+      return;
+    }
+
+    setDesktopUpdateStatus(`Downloading update ${Math.round(percent)}%`, percent / 100);
+  });
+
+  autoUpdater.on("update-downloaded", (info) => {
+    console.log(`Desktop update downloaded: ${info.version}`);
+    setDesktopUpdateStatus("Update ready to install");
+    promptForDownloadedUpdate(info).catch((error) => {
+      console.warn("Could not show the restart prompt for the downloaded update.");
+      console.warn(error && (error.stack || error.message || error));
+    });
+  });
+
+  setTimeout(() => {
+    autoUpdater.checkForUpdates().catch((error) => {
+      console.warn("Desktop auto-update check failed.");
+      console.warn(error && (error.stack || error.message || error));
+    });
+  }, 10000);
+}
+
+async function loadCreateAgentServer() {
+  const serverModule = await import(pathToFileURL(SERVER_APP_PATH).href);
+  return serverModule.createAgentServer;
 }
 
 function createWindow() {
@@ -89,17 +230,23 @@ function stopServerRuntime() {
     runtime.watchdog.stop();
   }
 
+  if (runtime.tmpWatch && typeof runtime.tmpWatch.stop === "function") {
+    runtime.tmpWatch.stop();
+  }
+
   if (runtime.server && runtime.server.listening) {
     runtime.server.close();
   }
 }
 
 async function startDesktop() {
-  serverRuntime = await createAgentServer(createDesktopServerOptions());
-
-  await serverRuntime.listen();
   await app.whenReady();
+  const runtimeParamOverrides = createDesktopRuntimeParamOverrides();
+  const createAgentServer = await loadCreateAgentServer();
+  serverRuntime = await createAgentServer(createDesktopServerOptions(runtimeParamOverrides));
+  await serverRuntime.listen();
   createWindow();
+  configureDesktopAutoUpdate();
 
   app.on("activate", () => {
     if (mainWindow && !mainWindow.isDestroyed()) {

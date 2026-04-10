@@ -30,3 +30,9 @@ ALLOW_GUEST_USERS:
   allowed: [true, false]
   default: false
   frontend_exposed: true
+CUSTOMWARE_GIT_HISTORY:
+  description: Enable debounced local Git history repositories in writable L1 group and L2 user roots.
+  type: boolean
+  allowed: [true, false]
+  default: true
+  frontend_exposed: false

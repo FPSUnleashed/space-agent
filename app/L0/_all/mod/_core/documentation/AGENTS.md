@@ -4,7 +4,7 @@
 
 `_core/documentation/` owns the supplemental agent-facing documentation module.
 
-This module is the narrative documentation layer for the repo. It does not replace `AGENTS.md` contracts. Instead, it gives the onscreen agent a browsable map of the system, grouped into stable markdown documents that are easy to load on demand through the module resolver.
+This module is the narrative documentation layer for the repo. It does not replace `AGENTS.md` contracts or the public-facing `README.md`. Instead, it gives the onscreen agent a browsable map of the system, grouped into stable markdown documents that are easy to load on demand through the module resolver.
 
 Documentation is top priority for this module. After any change under `_core/documentation/`, or any stable contract change that affects one of its docs, update this file, the relevant source `AGENTS.md` files, and the matching docs under `docs/` in the same session.
 
@@ -18,7 +18,7 @@ Current structure:
 - `docs/architecture/`: repo-wide runtime, desktop-host packaging, and documentation-system orientation
 - `docs/app/`: frontend runtime, admin-agent, browser-side WebLLM and Hugging Face runtime docs, extension, and spaces documentation
 - `docs/agent/`: onscreen-agent runtime, prompt, execution, and skill-system documentation
-- `docs/server/`: router, page, API, auth, and layered-filesystem documentation
+- `docs/server/`: router, page, API, auth, layered-filesystem, and writable-layer history documentation, including auth-preserving rollback rules
 - `docs/cli/`: CLI command and runtime-parameter documentation
 - `documentation.js`: fetch-based focused-doc helper imported through `/mod/_core/documentation/documentation.js`
 
@@ -44,6 +44,7 @@ This module owns:
 - `documentation.js` should stay focused on explicit doc reads and URL resolution; broad orientation belongs in the documentation skill body, not in a second helper round-trip
 - markdown docs in this tree should stay standalone enough that the agent can load one file without needing large hidden context
 - docs in this tree should summarize stable architecture, helper surfaces, workflows, and navigation paths; binding contracts still live in `AGENTS.md`
+- `README.md` owns public project positioning, quick starts, release links, community links, and the DeepWiki badge; this module may summarize that relationship but should not duplicate the README's marketing copy
 - when a doc describes a routed runtime surface with multiple internal panes, capture the stable scroll and viewport-capping ownership there so layout behavior does not drift between modules
 - when a doc summarizes a runtime surface, it should name the primary source files and the owning `AGENTS.md` file so drift is easy to correct
 - keep docs grouped by logical area instead of one giant file

@@ -15,6 +15,7 @@ This module owns:
 - `js/initFw.js`: shared frontend bootstrap entry for framework-backed pages
 - `js/initializer.js`: extensible shared bootstrap step that runs before Alpine startup
 - `js/runtime.js`: runtime installation onto `globalThis.space`
+- `js/new-window.js`: framework-wide same-origin `_blank` handling that lets app-opened new windows skip the `/enter` launcher guard while manual browser-opened windows still route through `/enter`
 - `js/markdown-frontmatter.js`: markdown frontmatter parsing plus safe markdown-to-DOM rendering helpers
 - `js/yaml-lite.js`: project-owned lightweight YAML parser and serializer shared directly by browser runtime helpers, server modules, and agent-surface param parsers
 - `js/server-config.js`: injected page-meta parsing for frontend-exposed backend runtime parameters
@@ -36,7 +37,7 @@ Current boot order:
 
 1. `initFw.js` imports `extensions.js` first so `space.extend` exists before other framework modules expose seams.
 2. `initializeRuntime(...)` publishes the shared runtime onto `globalThis.space`.
-3. `initializer.initialize()` runs the first extensible framework bootstrap step.
+3. `initializer.initialize()` runs the first extensible framework bootstrap step and installs the framework new-window handler.
 4. Alpine and framework support modules are loaded.
 5. Framework directives and magic helpers are registered.
 
@@ -56,7 +57,11 @@ Current boot order:
 Current API helper contract:
 
 - `space.api.userSelfInfo()` is the canonical frontend identity snapshot; frontend agents should use `username`, `managedGroups`, and `_admin` membership in `groups` to infer writable app roots before choosing where to store files or modules
+- `space.api.fileList(pathOrOptions, recursive?)` accepts normal path strings and an options object with `access: "write"`, `writableOnly: true`, or `gitRepositories: true` for server-confirmed writable discovery without exposing reserved `.git` metadata
 - `space.api.folderDownloadUrl(pathOrOptions)` builds the same-origin attachment URL for a permission-checked folder ZIP download without fetching the archive into browser memory
+- `space.api.gitHistoryList(pathOrOptions, limit?)`, `space.api.gitHistoryDiff(...)`, `space.api.gitHistoryPreview(...)`, `space.api.gitHistoryRollback(...)`, and `space.api.gitHistoryRevert(...)` call the optional server-owned writable-layer history endpoints; availability depends on `CUSTOMWARE_GIT_HISTORY`
+- `gitHistoryList` accepts `limit`, `offset`, and `fileFilter` when passed an options object, returns only commit metadata for the requested page, and includes `currentHash` so UIs can distinguish the current point from preserved forward-travel refs
+- `gitHistoryPreview` accepts `operation: "travel" | "revert"` plus optional `filePath`; it returns affected-file metadata and, when a file is provided, the operation-specific patch
 - framework-managed external `fetch(...)` calls and `space.fetchExternal(...)` try the browser's direct request first; when a direct cross-origin attempt fails and the `/api/proxy` retry succeeds, the frontend remembers that origin for the rest of the runtime and routes later requests for the same origin through the backend immediately
 - frontend modules and widgets must not hardcode third-party CORS proxy services; use direct `fetch(...)` or `space.fetchExternal(...)` for remote reads and reserve `space.proxy.buildUrl(...)` for cases that need a same-origin proxied URL string
 
@@ -66,6 +71,7 @@ Rules:
 - do not publish the runtime into `parent`, `top`, or sibling frames
 - if bootstrap order changes, update this doc and `/app/AGENTS.md`
 - shell-level one-time setup that must run before feature modules mount, such as analytics bootstrap or `document.head` tag installation, should prefer the shared `_core/framework/initializer.js/initialize/end` JS hook instead of page-shell edits
+- same-origin `/` and `/admin` URLs opened with `_blank` from framework-backed pages are handled centrally by `js/new-window.js`: normal left-clicks on `target="_blank"` links and `window.open(..., "_blank")` receive the current tab's `/enter` access in the child window before navigation, while context-menu opens, middle-clicks, and modifier-key opens are not intercepted and still route through `/enter`
 
 ## Extension And Component System
 

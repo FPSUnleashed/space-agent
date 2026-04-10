@@ -5,6 +5,7 @@ import path from "node:path";
 import { cloneGitRepository, createGitClient } from "../git/client_create.js";
 import { sanitizeRemoteUrl } from "../git/shared.js";
 import { createAppAccessController, createHttpError, toAppRelativePath } from "./file_access.js";
+import { recordAppPathMutations } from "./git_history.js";
 import { getRuntimeGroupIndex } from "./group_runtime.js";
 import { getLayerOrder, normalizeMaxLayer } from "./layer_limit.js";
 import {
@@ -620,6 +621,14 @@ async function installModule(options = {}) {
 
     throw createHttpError(error.message || "Module install failed.", 400);
   }
+
+  recordAppPathMutations(
+    {
+      projectRoot: options.projectRoot,
+      runtimeParams: options.runtimeParams
+    },
+    [targetPathInfo.projectPath]
+  );
 
   return {
     action: existsAsDirectory ? "updated" : "installed",

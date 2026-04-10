@@ -3,7 +3,6 @@
     <link rel="stylesheet" href="/mod/_core/visual/index.css" />
     <link rel="stylesheet" href="/mod/_core/admin/views/agent/agent.css" />
     <link rel="stylesheet" href="/mod/_core/huggingface/huggingface.css" />
-    <link rel="stylesheet" href="/mod/_core/webllm/webllm.css" />
     <script type="module" src="/mod/_core/admin/views/agent/store.js"></script>
   </head>
   <body>
@@ -187,7 +186,7 @@
                       :class="{ 'is-active': $store.adminAgent.isSettingsDraftUsingApiProvider }"
                       @click="$store.adminAgent.setSettingsProvider('api')"
                     >
-                      <span>LLM APIs</span>
+                      <span>API</span>
                     </button>
                     <button
                       type="button"
@@ -213,23 +212,8 @@
                     </label>
                   </div>
                   <div x-show="$store.adminAgent.isSettingsDraftUsingLocalProvider" x-cloak class="admin-agent-local-settings">
-                    <label class="field">
-                      <span>Local Runtime</span>
-                      <select
-                        :value="$store.adminAgent.settingsDraft.localProvider"
-                        @change="$store.adminAgent.setSettingsLocalProvider($event.target.value)"
-                      >
-                        <option value="huggingface">HuggingFace ONNX</option>
-                        <option value="webllm">WebLLM</option>
-                      </select>
-                    </label>
-
-                    <div x-show="$store.adminAgent.isSettingsDraftUsingLocalHuggingFaceProvider" x-cloak class="admin-agent-local-provider-panel">
+                    <div class="admin-agent-local-provider-panel">
                       <x-component path="/mod/_core/huggingface/config-sidebar.html" mode="admin"></x-component>
-                    </div>
-
-                    <div x-show="$store.adminAgent.isSettingsDraftUsingLocalWebLlmProvider" x-cloak class="admin-agent-local-provider-panel">
-                      <x-component path="/mod/_core/webllm/config-sidebar.html" mode="admin"></x-component>
                     </div>
                   </div>
                   <label class="field">

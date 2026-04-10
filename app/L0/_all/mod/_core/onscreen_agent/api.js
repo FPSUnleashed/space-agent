@@ -1,4 +1,8 @@
+import * as config from "/mod/_core/onscreen_agent/config.js";
+import * as llmParams from "/mod/_core/onscreen_agent/llm-params.js";
 import { prepareOnscreenAgentCompletionRequest } from "/mod/_core/onscreen_agent/llm.js";
+import { mergeConsecutiveChatMessages } from "/mod/_core/framework/js/chat-messages.js";
+import { getHuggingFaceManager } from "/mod/_core/huggingface/manager.js";
 
 function extractTextContent(value) {
   if (typeof value === "string") {
@@ -183,47 +187,99 @@ async function readStreamingResponse(response, onDelta) {
   }
 }
 
-export const streamOnscreenAgentCompletion = globalThis.space.extend(
-  import.meta,
-  async function streamOnscreenAgentCompletion({
-    messages,
-    onDelta,
-    preparedRequest,
-    promptInput,
-    settings,
-    signal,
-    systemPrompt
-  }) {
-    const effectiveRequest =
-      preparedRequest ||
-      (await prepareOnscreenAgentCompletionRequest({
-        messages,
-        promptInput,
-        settings,
-        systemPrompt
-      }));
-    const effectiveSettings =
-      effectiveRequest?.settings && typeof effectiveRequest.settings === "object"
-        ? effectiveRequest.settings
-        : settings;
+function normalizeCompletionMessagesForLocal(messages) {
+  const mergedMessages = mergeConsecutiveChatMessages(Array.isArray(messages) ? messages : []);
 
-    if (!effectiveSettings?.apiEndpoint?.trim()) {
+  return mergedMessages
+    .map((message) => {
+      const role =
+        message?.role === "system"
+          ? "system"
+          : message?.role === "assistant"
+            ? "assistant"
+            : message?.role === "user"
+              ? "user"
+              : "";
+      const content = extractTextContent(message?.content || "");
+
+      if (!role || !content.trim()) {
+        return null;
+      }
+
+      return {
+        content,
+        role
+      };
+    })
+    .filter(Boolean);
+}
+
+export class OnscreenAgentLlmClient {
+  constructor(options = {}) {
+    this.settings =
+      options.settings && typeof options.settings === "object"
+        ? options.settings
+        : config.DEFAULT_ONSCREEN_AGENT_SETTINGS;
+  }
+
+  async resolvePreparedRequest(options = {}) {
+    if (options.preparedRequest && typeof options.preparedRequest === "object") {
+      return options.preparedRequest;
+    }
+
+    const promptOptions =
+      options.promptOptions && typeof options.promptOptions === "object"
+        ? options.promptOptions
+        : {
+            localProfile:
+              config.normalizeOnscreenAgentLlmProvider(this.settings.provider) ===
+              config.ONSCREEN_AGENT_LLM_PROVIDER.LOCAL
+          };
+
+    return prepareOnscreenAgentCompletionRequest({
+      messages: options.messages,
+      options: promptOptions,
+      promptInput: options.promptInput,
+      settings: this.settings,
+      systemPrompt: options.systemPrompt
+    });
+  }
+
+  async streamCompletion() {
+    throw new Error("LLM client subclasses must implement streamCompletion().");
+  }
+}
+
+export class OnscreenAgentApiLlmClient extends OnscreenAgentLlmClient {
+  validateSettings(settings = this.settings) {
+    if (!settings?.apiEndpoint?.trim()) {
       throw new Error("Set an API endpoint before sending a message.");
     }
 
-    if (!effectiveSettings.apiKey.trim()) {
+    if (!settings.apiKey.trim()) {
       throw new Error("Set an API key before sending a message.");
     }
 
-    if (!effectiveSettings.model.trim()) {
+    if (!settings.model.trim()) {
       throw new Error("Set a model before sending a message.");
     }
+  }
+
+  async streamCompletion(options = {}) {
+    const onDelta = typeof options.onDelta === "function" ? options.onDelta : () => {};
+    const effectiveRequest = await this.resolvePreparedRequest(options);
+    const effectiveSettings =
+      effectiveRequest?.settings && typeof effectiveRequest.settings === "object"
+        ? effectiveRequest.settings
+        : this.settings;
+
+    this.validateSettings(effectiveSettings);
 
     const response = await fetch(effectiveRequest.requestUrl, {
       method: "POST",
       headers: effectiveRequest.headers,
       body: JSON.stringify(effectiveRequest.requestBody),
-      signal
+      signal: options.signal
     });
 
     if (!response.ok) {
@@ -241,5 +297,95 @@ export const streamOnscreenAgentCompletion = globalThis.space.extend(
     }
 
     return readStreamingResponse(response, onDelta);
+  }
+}
+
+export class OnscreenAgentLocalLlmClient extends OnscreenAgentLlmClient {
+  validateSettings(settings = this.settings) {
+    const selection = config.getOnscreenAgentLocalModelSelection(settings);
+
+    if (selection.provider !== config.ONSCREEN_AGENT_LOCAL_PROVIDER.HUGGINGFACE) {
+      throw new Error("Choose a supported local LLM provider.");
+    }
+
+    if (!selection.modelId.trim()) {
+      throw new Error("Choose a Hugging Face model before sending a message.");
+    }
+
+    if (!selection.dtype.trim()) {
+      throw new Error("Choose a Hugging Face dtype before sending a message.");
+    }
+  }
+
+  getCompletionMessages(preparedRequest) {
+    const requestBodyMessages = Array.isArray(preparedRequest?.requestBody?.messages)
+      ? preparedRequest.requestBody.messages
+      : [];
+    const requestMessages = Array.isArray(preparedRequest?.messages) ? preparedRequest.messages : [];
+
+    return normalizeCompletionMessagesForLocal(requestBodyMessages.length ? requestBodyMessages : requestMessages);
+  }
+
+  async streamCompletion(options = {}) {
+    const onDelta = typeof options.onDelta === "function" ? options.onDelta : () => {};
+    const effectiveRequest = await this.resolvePreparedRequest(options);
+    const effectiveSettings =
+      effectiveRequest?.settings && typeof effectiveRequest.settings === "object"
+        ? effectiveRequest.settings
+        : this.settings;
+
+    this.validateSettings(effectiveSettings);
+
+    const result = await getHuggingFaceManager().streamCompletion({
+      messages: this.getCompletionMessages(effectiveRequest),
+      modelSelection: config.getOnscreenAgentLocalModelSelection(effectiveSettings),
+      onDelta,
+      requestOptions: llmParams.parseOnscreenAgentParamsText(effectiveSettings.paramsText || ""),
+      signal: options.signal
+    });
+
+    return result.responseMeta;
+  }
+}
+
+export function createOnscreenAgentLlmClient(settings = config.DEFAULT_ONSCREEN_AGENT_SETTINGS) {
+  const provider = config.normalizeOnscreenAgentLlmProvider(settings?.provider);
+
+  if (provider === config.ONSCREEN_AGENT_LLM_PROVIDER.LOCAL) {
+    return new OnscreenAgentLocalLlmClient({
+      settings
+    });
+  }
+
+  return new OnscreenAgentApiLlmClient({
+    settings
+  });
+}
+
+export const streamOnscreenAgentCompletion = globalThis.space.extend(
+  import.meta,
+  async function streamOnscreenAgentCompletion({
+    messages,
+    onDelta,
+    preparedRequest,
+    promptOptions,
+    promptInput,
+    settings,
+    signal,
+    systemPrompt
+  }) {
+    const normalizedSettings =
+      settings && typeof settings === "object" ? settings : preparedRequest?.settings;
+    const client = createOnscreenAgentLlmClient(normalizedSettings);
+
+    return client.streamCompletion({
+      messages,
+      onDelta,
+      preparedRequest,
+      promptOptions,
+      promptInput,
+      signal,
+      systemPrompt
+    });
   }
 );

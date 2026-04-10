@@ -49,16 +49,29 @@ App-file endpoints:
 - `file_move`
 - `file_info`
 - `folder_download`
+- `git_history_diff`
+- `git_history_list`
+- `git_history_preview`
+- `git_history_rollback`
+- `git_history_revert`
 
 Current rules:
 
 - these endpoints delegate to `server/lib/customware/file_access.js`
 - they operate on app-rooted paths and supported endpoints also accept `~` or `~/...`
+- `file_list` and `file_paths` accept `access: "write"` or `writableOnly: true` when callers need only writable app paths instead of the default readable path set
+- `file_list` and `file_paths` accept `gitRepositories: true`; with patterns such as `**/.git/`, `file_paths` returns matching local-history owner roots like `L1/<group>/` or `L2/<user>/` while keeping `.git` metadata reserved and hidden
 - batch operations validate all targets before any mutation begins
 - single-file or single-folder copy and move requests must keep working when request plumbing omits `entries`; only real batch calls should forward an `entries` array to the shared helper
 - endpoint-specific validation should stay thin and reuse the shared helper contract
 - `folder_download` supports `HEAD` for permission-only validation and `GET` or `POST` for the actual streamed ZIP response
 - `folder_download` validates readable folder paths through the shared file-access permission model, creates a ZIP archive in `server/tmp/`, and returns a streamed attachment response without buffering the archive in memory
+- `git_history_list` returns paginated local-history commit metadata for a readable or writable `L1/<group>/` or `L2/<user>/` owner root when `CUSTOMWARE_GIT_HISTORY` is enabled; it accepts `limit`, `offset`, and `fileFilter`, returns full per-commit file action metadata for listed commits, and does not return patch bodies
+- `git_history_diff` returns the patch body for one file in one commit after read permission is verified
+- `git_history_preview` returns affected-file metadata for a travel or revert operation after write permission is verified, and returns an operation-specific patch when `filePath` is provided
+- `git_history_rollback` hard-resets a writable owner-root history repository to a requested commit, preserves ignored L2 auth files, preserves the previous head for forward travel when possible, and refreshes the watchdog after the reset
+- `git_history_revert` creates a new commit that undoes a selected commit, preserves ignored L2 auth files, and refreshes the watchdog after the revert
+- history endpoints delegate path normalization, permission checks, commit listing, diff reads, rollback, revert, and commit-loop suppression to `server/lib/customware/git_history.js`
 
 Module endpoints:
 

@@ -1,5 +1,0 @@
-name: WebLLM
-path: webllm
-description: Load browser-side WebLLM models and run a compact testing chat.
-icon: smart_toy
-color: "#7ddcff"

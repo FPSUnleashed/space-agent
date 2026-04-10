@@ -1,8 +1,14 @@
 # Documentation System
 
-This repo has two documentation layers on purpose.
+This repo has three documentation surfaces on purpose.
 
-## The Two Layers
+## The Three Surfaces
+
+`README.md`:
+
+- is the public product source of truth
+- explains what Space Agent is, how to start it, and where to find community, releases, and DeepWiki
+- must link back to the binding implementation docs instead of replacing them
 
 `AGENTS.md` files:
 
@@ -23,7 +29,8 @@ When working:
 1. treat the user request as the immediate task contract
 2. treat the closest relevant `AGENTS.md` files as the stable repo contract
 3. use these docs to orient quickly and find the right area
-4. inspect code for exact implementation details
+4. use `README.md` for public positioning, quick starts, and external entry links
+5. inspect code for exact implementation details
 
 Apply the architecture bias while reading:
 
@@ -31,7 +38,7 @@ Apply the architecture bias while reading:
 - do not read backend reference docs as implicit permission to edit `server/`
 - if the docs show that a change must cross into backend-owned security or integrity behavior and the user did not ask for backend work, ask for permission before editing server files
 
-If this module and an `AGENTS.md` file disagree, the `AGENTS.md` file wins and this module must be updated.
+If `README.md`, this module, and an `AGENTS.md` file disagree about implementation behavior, the `AGENTS.md` file wins and the public or narrative docs must be updated. If they disagree about public positioning, quick starts, or community links, update `README.md` first and reflect any stable documentation-system change here.
 
 ## Helper Surface
 
@@ -52,6 +59,7 @@ When a stable contract or workflow changes:
 - update parent `AGENTS.md` files when the broader boundary changed
 - update the relevant docs in this module
 - update `ext/skills/documentation/SKILL.md` if you add, remove, rename, or repurpose docs
+- update `README.md` when the public project pitch, quick-start flow, release path, community link, or DeepWiki indexing link changes
 
 What does not belong here:
 

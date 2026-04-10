@@ -93,6 +93,8 @@ Runtime resolution rules:
 - process environment variables win over the schema `default`
 - only parameters with `frontend_exposed: true` are injected into page shells for frontend reads
 - `CUSTOMWARE_PATH`, when non-empty, is the parent directory that contains backend `L1/` and `L2/` writable roots
+- `CUSTOMWARE_GIT_HISTORY` enables optional adaptive-debounced per-owner local Git history repositories for writable `L1` and `L2` roots; it defaults to `false`
+- short-lived `user` and `group` commands flush pending local-history commits before returning when `CUSTOMWARE_GIT_HISTORY` is enabled
 
 The `help` export should be complete enough that `node space help <command>` is useful without reading the code. Prefer accurate usage lines, concrete descriptions, explicit argument descriptions when position matters, and examples when the command shape is not obvious.
 
@@ -145,6 +147,7 @@ Guidance:
 - keep `serve` focused on process startup and bootstrap overrides
 - keep `--host` and `--port` as aliases of the shared `HOST` and `PORT` runtime parameters
 - keep `PORT=0` available as the explicit OS-assigned free-port mode used by the desktop host and other ephemeral local-runtime flows
+- prefer `node space set CUSTOMWARE_PATH <path>` before user or group creation when documenting persistent writable-root setup, because launch-only `CUSTOMWARE_PATH=...` overrides affect only that `serve` process
 - do not move application behavior into the command when it belongs in `server/`
 
 ### `help`
@@ -230,7 +233,7 @@ Guidance:
 
 Purpose:
 
-- update a source checkout from the git repository
+- update a source checkout from the canonical `agent0ai/space-agent` git repository
 - support branch tracking, remembered branch reconnect, tag targets, and commit targets
 
 Current usage:
@@ -243,6 +246,7 @@ Current usage:
 
 Behavior summary:
 
+- before fetching, it pins `origin` to `https://github.com/agent0ai/space-agent.git` and sets the normal branch fetch refspec for that remote
 - with no target, it fast-forwards the current or recoverable branch from `origin`
 - with `--branch <branch>` or a branch positional target, it reattaches and updates that branch
 - with a tag or commit target, it moves the current or recovered branch to that exact revision when possible, otherwise it may fall back to detached HEAD
@@ -272,7 +276,7 @@ Current subcommands:
 
 Current usage:
 
-- `node space user create <username> --password <password> [--full-name <name>] [--force]`
+- `node space user create <username> --password <password> [--full-name <name>] [--groups <group[,group...]>] [--force]`
 - `node space user password <username> --password <password>`
 
 Current behavior:
@@ -282,15 +286,19 @@ Current behavior:
 - `create` writes the backend-sealed password verifier envelope to `L2/<username>/meta/password.json`
 - `create` initializes signed session storage in `L2/<username>/meta/logins.json`
 - `create` ensures a `mod/` folder exists for the user
+- `create --groups <group[,group...]>` adds the created user to one or more writable `L1` groups after user creation
+- group ids passed through `--groups` are comma-separated, normalized, de-duplicated, and sorted before membership writes
+- missing target groups in `--groups` are created automatically in the writable `L1` layer through the shared group helper
 - `password` rewrites the verifier and clears active sessions
 - `--full-name` sets `full_name` in `user.yaml`; if omitted it defaults to the user id
 - `--force` replaces the full user directory during create
-- when `CUSTOMWARE_PATH` is configured, those logical `L2/...` writes land under `CUSTOMWARE_PATH/L2/...`
+- when `CUSTOMWARE_PATH` is configured with `node space set CUSTOMWARE_PATH <path>` or process env, these logical `L2/...` writes land under `CUSTOMWARE_PATH/L2/...` and `--groups` writes land under `CUSTOMWARE_PATH/L1/...`
 
 Examples:
 
 - `node space user create alice --password secret123`
 - `node space user create alice --password secret123 --full-name "Alice Example"`
+- `node space user create alice --password secret123 --groups _admin,team-red`
 - `node space user create alice --password secret123 --force`
 - `node space user password alice --password newsecret456`
 
@@ -325,10 +333,11 @@ Current behavior:
 - `create` creates the logical `L1/<group-id>/` root and initializes `group.yaml`
 - `create` ensures a `mod/` folder exists for the group
 - `add` and `remove` work with both user membership and group inclusion
+- `add` creates the target writable `L1` group if it does not already exist, which allows predefined runtime groups such as `_admin` to gain their first writable membership file without a separate `group create`
 - `--manager` switches the target list from included members to managing members
 - user targets affect `included_users` or `managing_users`
 - group targets affect `included_groups` or `managing_groups`
-- when `CUSTOMWARE_PATH` is configured, those logical `L1/...` writes land under `CUSTOMWARE_PATH/L1/...`
+- when `CUSTOMWARE_PATH` is configured with `node space set CUSTOMWARE_PATH <path>` or process env, those logical `L1/...` writes land under `CUSTOMWARE_PATH/L1/...`
 
 Parameter meanings:
 

@@ -1,10 +1,12 @@
 import * as device from "./device.js";
+import { installFrameworkNewWindowAccess } from "./new-window.js";
 
 const INITIALIZER_MODULE_REF = new URL("../initializer.js", import.meta.url);
 
 export const initialize = globalThis.space.extend(
   INITIALIZER_MODULE_REF,
   async function initialize() {
+    installFrameworkNewWindowAccess();
     await setDeviceClass();
   }
 );

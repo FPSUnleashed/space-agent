@@ -80,6 +80,7 @@ Parent and child split rules:
 - expose server API modules from `server/api/`
 - provide the outbound fetch proxy at `/api/proxy`
 - enforce auth, session, module, and app-file access boundaries
+- optionally maintain adaptive-debounced per-owner local Git history repositories for writable `L1/<group>/` and `L2/<user>/` roots when `CUSTOMWARE_GIT_HISTORY` is enabled
 - keep the backend-only auth secret outside the logical app tree, using shared environment injection via `SPACE_AUTH_PASSWORD_SEAL_KEY` and `SPACE_AUTH_SESSION_HMAC_KEY` for multi-instance deployments or local fallback storage under `server/data/`
 - manage `server/tmp/` as janitor-backed transient storage for low-RAM server-side artifacts such as folder-download archives
 - resolve runtime parameters from launch overrides, stored `.env` values, process environment variables, and schema defaults, including backend storage parameters such as `CUSTOMWARE_PATH`
@@ -100,6 +101,7 @@ Current server layout:
 - `server/api/`: endpoint modules loaded by endpoint name
 - `server/router/`: top-level request routing, page handling, `/mod/...` serving, direct app-file fetches, request context, response helpers, proxy transport, and CORS handling
 - `server/lib/customware/`: logical app-path normalization, customware-root resolution, group and inheritance logic, extension override resolution, app-file access, and module management
+- `server/lib/customware/git_history.js`: optional writable-layer local Git history scheduling, repository discovery, paginated commit listing, file-diff reads, operation previews, rollback, revert, and commit-loop suppression
 - `server/lib/auth/`: password verification, session service, user file helpers, user indexing, and user-management helpers
 - `server/lib/file_watch/`: config-driven watchdog plus derived indexes such as `path_index`, `group_index`, and `user_index`, all keyed by logical `/app/...` project paths
 - `server/lib/tmp/`: `server/tmp/` lifecycle, stale-entry cleanup, and low-RAM ZIP archive creation for attachment-style downloads
@@ -125,7 +127,7 @@ Core runtime contracts:
 - runtime auth may switch to a single-user mode where every request resolves to the implicit `user` principal
 - `/login` stays the public password-login entry
 - `/enter` is the firmware-backed launcher route for launcher-eligible sessions: always in single-user runtime, and also for authenticated multi-user requests; unauthenticated multi-user requests are redirected to `/login`
-- launcher-eligible requests route new tabs and windows through `/enter` by a server-injected page-shell guard on `/` and `/admin`, while reloads in the same tab keep their current target
+- launcher-eligible requests route new browser-opened tabs and windows through `/enter` by a server-injected page-shell guard on `/` and `/admin`, while reloads in the same tab keep their current target; framework-created same-origin `_blank` opens may pre-grant the same tab-access marker before navigation
 - `HOST` and `PORT` come from the same runtime-parameter system as other server params instead of a special-case startup path; `PORT=0` is valid when a caller wants the OS to assign a free port, and the started runtime object must publish the resolved bound `port` and `browserUrl` after `listen()`
 - `/api/proxy`, `/mod/...`, and direct app-file fetches require an authenticated session unless an endpoint explicitly opts into anonymous access
 - `/mod/...` resolution uses the layered customware model and honors `maxLayer`, which defaults to `2`
@@ -143,6 +145,8 @@ The server relies on a small set of shared infrastructure contracts. Do not re-i
 
 - `server/lib/file_watch/` owns the canonical live view of app files through `path_index`, `group_index`, and `user_index`
 - `server/lib/customware/file_access.js` is the canonical entry point for authenticated app-file list, read, write, delete, copy, move, and info operations
+- file listing and pattern discovery may be filtered to writable paths through the shared file-access helper, and Git repository discovery returns writable owner roots without exposing `.git` metadata
+- `server/lib/customware/git_history.js` is the canonical entry point for optional per-owner writable-layer Git history and rollback, including L2 auth-file ignore and rollback preservation rules
 - `server/lib/tmp/` owns the canonical `server/tmp/` janitor and disk-backed archive creation for streamed folder downloads
 - `server/lib/customware/module_inheritance.js` and `server/lib/customware/extension_overrides.js` are the canonical module and extension resolution helpers
 - `server/lib/customware/module_manage.js` is the canonical module list, info, install, and remove helper
@@ -184,6 +188,7 @@ Current endpoint families:
 
 - public auth and health: `health`, `guest_create`, `login_challenge`, `login`, `login_check`
 - app files: `file_list`, `file_paths`, `file_read`, `file_write`, `file_delete`, `file_copy`, `file_move`, `file_info`, `folder_download`
+- local history: `git_history_list`, `git_history_diff`, `git_history_preview`, `git_history_rollback`, `git_history_revert`
 - modules: `module_list`, `module_info`, `module_install`, `module_remove`
 - runtime and identity: `extensions_load`, `password_generate`, `user_self_info`
 

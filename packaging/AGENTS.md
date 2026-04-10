@@ -46,11 +46,13 @@ Required coverage:
 
 `packaging/package.json` holds packaging-only dependencies so the root install can stay lean, and packaging scripts must treat that file as the authoritative Electron version and distribution source for native builds.
 
+Runtime dependencies required by `packaging/desktop/main.js`, such as the Electron updater client, must live in the root `package.json` `dependencies` block so `electron-builder` copies them into the packaged app under `Contents/Resources/app/node_modules`.
+
 The root `package.json` `build` block owns the Electron app entry, copied files, and `directories.app` selection. That config must keep the app directory pinned to the repo root because `app/package.json` exists only to mark the browser tree as an ES module package boundary, not to redefine the desktop host's app root.
 
 That same root build config disables `npmRebuild` for desktop packaging. `nodegit` is optional in this repo, so packaged desktop builds rely on the existing Git backend fallback order instead of requiring Electron-time native rebuilds of every optional module.
 
-`packaging/scripts/` holds packaging entrypoints and shared build helpers. Multiword operation entrypoints use object-first hyphen naming such as `host-package.js`, `linux-package.js`, and `desktop-dev-run.js`.
+`packaging/scripts/` holds packaging entrypoints and shared build helpers. Multiword operation entrypoints use object-first hyphen naming such as `host-package.js`, `linux-package.js`, and `desktop-dev-run.js`. `desktop-builder.js` is the canonical wrapper around `electron-builder`, `release-version.js` is the canonical tag-to-semver helper for local and CI desktop builds, and `release-metadata-merge.js` owns the final release-asset updater metadata merge for multi-arch macOS and Windows releases. Desktop version resolution must prefer explicit script input, release environment variables, an exact checked-out Git tag, and only then the root package version, so OS app metadata matches the release being bundled.
 
 `packaging/resources/` holds shared packaging resources, including the canonical source artwork that desktop packaging can derive platform icons from.
 
@@ -62,7 +64,9 @@ Native hosts should remain thin:
 - open the browser app inside the host surface
 - native host startup code must await async server-factory work before reading runtime fields such as `host`, `port`, `server`, or `watchdog`, and host shutdown paths must tolerate partial startup failure
 - packaged desktop builds must keep the app tree unpacked on disk instead of wrapping it in `app.asar`, because the server watchdog and app-file indexing layers depend on watching real directories under the bundled project tree
-- packaged desktop builds may add packaging-owned runtime param overrides when the native host contract requires them; the current Electron host binds the backend to loopback with `PORT=0` so the OS assigns a free local port, waits for the server runtime to publish the resolved `browserUrl`, forces `SINGLE_USER_APP=true` only for packaged apps, opens `/enter` as the recovery-safe splash entry when single-user mode is active, and keeps normal runtime auth behavior for source-checkout desktop dev runs
+- packaged desktop builds may add packaging-owned runtime param overrides when the native host contract requires them; the current Electron host binds the backend to loopback with `PORT=0` so the OS assigns a free local port, waits for the server runtime to publish the resolved `browserUrl`, forces `SINGLE_USER_APP=true` only for packaged apps, roots `CUSTOMWARE_PATH` under the native OS user-data directory as `<userData>/customware`, opens `/enter` as the recovery-safe splash entry when single-user mode is active, and keeps normal runtime auth behavior for source-checkout desktop dev runs
+- packaged desktop apps use the Electron release updater against GitHub Releases instead of mutating the installed bundle through `node space update`; update checks must stay non-blocking, show visible native window-title and progress-bar status while checking or downloading, and prompt for restart only after the new bundle has been downloaded
+- tagged desktop release automation lives in `.github/workflows/release-desktop.yml`; it uses the packaging scripts for all platform builds, requires OpenRouter-backed release-note generation from commit history through the prompt helper under `packaging/resources/release-notes/`, merges multi-arch updater metadata before upload, rebuilds fresh desktop artifacts for every tagged release, and owns the GitHub Release upload step separately from the local packaging scripts
 - preserve platform-neutral behavior here when possible
 
 ## Guidance
@@ -71,5 +75,6 @@ Native hosts should remain thin:
 - keep packaging automation in `packaging/scripts/`
 - keep multiword packaging script filenames object-first so related entrypoints sort together
 - keep platform-specific packaging details in `packaging/platforms/`
+- keep local packaging workable without Apple credentials; the desktop builder consumes `SKIP_SIGNING=1` for macOS packaging runs and disables signing and notarization in that mode, and for signed local runs it accepts the launcher-style `APPLE_PASSWORD` env var as an alias for `APPLE_APP_SPECIFIC_PASSWORD`
 - add future mobile-specific hosts alongside `packaging/desktop/`
 - when native host behavior, preload bridges, packaging assets, or packaging entrypoints change, update this file in the same session

@@ -22,8 +22,14 @@ Current file endpoints:
 - `file_move`
 - `file_info`
 - `folder_download`
+- `git_history_diff`
+- `git_history_list`
+- `git_history_preview`
+- `git_history_rollback`
+- `git_history_revert`
 
 These endpoints should stay thin and delegate to `server/lib/customware/file_access.js`.
+The history endpoints delegate to `server/lib/customware/git_history.js`.
 
 ## Path Forms
 
@@ -52,10 +58,17 @@ Important rules:
 - `fileInfo(...)`
 - `fileCopy(...)`
 - `fileMove(...)`
-- `fileList(path, recursive?)`
+- `fileList(pathOrOptions, recursive?)`
 - `folderDownloadUrl(pathOrOptions)`
+- `gitHistoryList(pathOrOptions, limit?)`
+- `gitHistoryDiff(pathOrOptions, commitHash?, filePath?)`
+- `gitHistoryPreview(pathOrOptions, commitHash?, operation?, filePath?)`
+- `gitHistoryRollback(pathOrOptions, commitHash?)`
+- `gitHistoryRevert(pathOrOptions, commitHash?)`
 
 These helpers accept single-path forms and composed batch forms where appropriate.
+
+`fileList(...)` also accepts an options object. Use `access: "write"` or `writableOnly: true` when a browser surface needs server-confirmed writable paths. Use `gitRepositories: true` with writable access to list local-history owner roots without exposing `.git` metadata.
 
 ## Batch Semantics
 
@@ -74,6 +87,8 @@ Behavior summary:
 - accepts path patterns rather than exact file paths
 - patterns are normalized before matching
 - returns matched logical project paths grouped by the original pattern
+- accepts `access: "write"` or `writableOnly: true` to limit matches to paths the user can write
+- accepts `gitRepositories: true`; with a pattern such as `**/.git/`, it returns matching local-history owner roots such as `L1/team/` or `L2/alice/`, not the reserved `.git` paths themselves
 
 It is the right tool for catalog discovery, not for raw filesystem walking.
 
@@ -94,3 +109,23 @@ space.api.folderDownloadUrl(path)
 ```
 
 instead of manually fetching the blob into browser memory.
+
+## Writable-Layer Git History
+
+`CUSTOMWARE_GIT_HISTORY` enables optional local Git history for writable owner roots.
+
+Behavior summary:
+
+- the flag defaults to `false`
+- each `L1/<group>/` and `L2/<user>/` owner root is committed as its own local repository when mutations are quiet for 10 seconds
+- long write bursts shorten the pending debounce to 5 seconds after 1 minute, 1 second after 5 minutes, and immediate commit after 10 minutes
+- app-file writes, deletes, copies, moves, group/user/auth writes, and module installs schedule history for the affected owner root
+- L2 history repos ignore `meta/password.json` and `meta/logins.json`; rollback preserves those files instead of resetting them to old committed state
+- L1 history repos still get a `.gitignore`, currently empty
+- `.git` metadata is reserved and blocked from app-file reads, writes, direct fetches, and path indexes
+- `git_history_list` accepts `path`, optional `limit`, optional `offset`, and optional `fileFilter`; plain filters match as open-ended changed-path or nested-filename substrings, and responses return a page of commit metadata with timestamps, hashes, `currentHash`, and full changed-file action entries for listed commits without loading patch bodies
+- repository selectors should discover writable history roots through `file_paths` or `file_list` with `gitRepositories: true` and `access: "write"` before calling the history endpoints for a selected owner root
+- `git_history_diff` accepts `path`, `commitHash`, and `filePath`, requires read permission, and returns the patch for that one file in that one commit
+- `git_history_preview` accepts `path`, `commitHash`, `operation`, and optional `filePath`, requires write permission, returns affected files for travel or revert, and returns the operation-specific patch when a file is provided
+- `git_history_rollback` accepts `path` plus `commitHash` or `commit`, requires write permission, preserves the previous head for forward travel when possible, hard-resets the owner repo, and suppresses history scheduling for the rollback itself
+- `git_history_revert` accepts `path` plus `commitHash` or `commit`, requires write permission, and creates a new commit with inverse changes instead of moving the current point

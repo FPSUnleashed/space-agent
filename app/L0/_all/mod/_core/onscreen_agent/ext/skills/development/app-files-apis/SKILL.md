@@ -11,7 +11,7 @@ The shared frontend runtime exposes authenticated backend helpers through `space
 
 Current wrapped helpers include:
 
-- `await space.api.fileList(path, recursive)`
+- `await space.api.fileList(pathOrOptions, recursive?)`
 - `await space.api.fileRead(pathOrFiles, encoding?)`
 - `await space.api.fileWrite(pathOrFiles, content?, encoding?)`
 - `await space.api.fileDelete(pathOrPaths)`
@@ -19,6 +19,11 @@ Current wrapped helpers include:
 - `await space.api.fileMove(pathOrEntries, toPath?)`
 - `await space.api.fileInfo(pathOrOptions)`
 - `space.api.folderDownloadUrl(pathOrOptions)`
+- `await space.api.gitHistoryList(pathOrOptions, limit?)`
+- `await space.api.gitHistoryDiff(pathOrOptions, commitHash?, filePath?)`
+- `await space.api.gitHistoryPreview(pathOrOptions, commitHash?, operation?, filePath?)`
+- `await space.api.gitHistoryRollback(pathOrOptions, commitHash?)`
+- `await space.api.gitHistoryRevert(pathOrOptions, commitHash?)`
 - `await space.api.userSelfInfo()`
 - `await space.api.call("endpoint_name", { method, query, body, headers, signal })`
 
@@ -26,17 +31,22 @@ Use `space.api.folderDownloadUrl(...)` when the browser should trigger a regular
 
 When a UI needs user-visible download failure feedback without fetching the archive blob into memory, preflight the request with `space.api.fileInfo(...)` for files or `space.api.call("folder_download", { method: "HEAD", query: { path } })` for folders before starting the browser download.
 
+`fileList(...)` accepts `{ access: "write" }` or `{ writableOnly: true }` when discovery must be limited to writable paths. Use `{ gitRepositories: true, access: "write" }` or `space.api.call("file_paths", { method: "POST", body: { patterns: ["**/.git/"], gitRepositories: true, access: "write" } })` to discover writable local-history owner roots; the server returns paths such as `L1/team/` and `L2/alice/`, not `.git` metadata.
+
+`gitHistoryList(...)`, `gitHistoryDiff(...)`, `gitHistoryPreview(...)`, `gitHistoryRollback(...)`, and `gitHistoryRevert(...)` are available only when the backend runtime has `CUSTOMWARE_GIT_HISTORY=true`. They operate on writable owner roots such as `~`, `L2/<user>/`, or `L1/<group>/`; list supports `limit`, `offset`, and `fileFilter`, preview returns affected files and optional operation-specific patches for travel or revert, diff reads one commit-file patch, rollback requires write permission and preserves ignored L2 auth files plus forward-travel refs, and revert creates a new inverse commit. The first-party `#/time_travel` page defaults to the authenticated user's `~` history and can switch to write-accessible `L1` or `L2` history roots through the repository picker.
+
 ## Logical Path Rules
 
 - Use logical app-rooted paths such as `L2/alice/user.yaml`, not disk paths.
 - `~` and `~/...` target the authenticated user's `L2/<username>/...` path.
 - These logical paths do not change when writable storage moves under `CUSTOMWARE_PATH`.
 - `fileWrite(".../")` creates a directory because the path ends with `/`.
+- `.git` metadata under writable owner roots is server infrastructure and is blocked from app-file reads, writes, direct fetches, and indexed discovery.
 
 ## Discovery Rules
 
 - Use permission-aware APIs, not ad hoc browser path guesses.
-- Use `space.api.call("file_paths", { method: "POST", body: { patterns: [...] } })` for indexed glob discovery.
+- Use `space.api.call("file_paths", { method: "POST", body: { patterns: [...] } })` for indexed glob discovery; add `access: "write"` for writable-only results.
 - Use `space.api.call("module_list", ...)` only when you need module inventory metadata rather than raw file paths.
 - Use `space.api.call("extensions_load", ...)` when the browser needs module-owned `ext/...` assets resolved with layered override behavior, such as HTML adapters, JS hooks, or the dashboard's `ext/pages/*.yaml` page manifests.
 

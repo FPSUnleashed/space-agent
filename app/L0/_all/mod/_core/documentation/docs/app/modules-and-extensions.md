@@ -5,10 +5,16 @@ This doc covers how browser code is delivered and composed.
 ## Primary Sources
 
 - `app/AGENTS.md`
+- `app/L0/_all/mod/_core/admin/AGENTS.md`
+- `app/L0/_all/mod/_core/agent/AGENTS.md`
+- `app/L0/_all/mod/_core/dashboard/AGENTS.md`
+- `app/L0/_all/mod/_core/file_explorer/AGENTS.md`
 - `app/L0/_all/mod/_core/framework/AGENTS.md`
 - `app/L0/_all/mod/_core/login_hooks/AGENTS.md`
+- `app/L0/_all/mod/_core/onscreen_menu/AGENTS.md`
 - `app/L0/_all/mod/_core/promptinclude/AGENTS.md`
 - `app/L0/_all/mod/_core/router/AGENTS.md`
+- `app/L0/_all/mod/_core/time_travel/AGENTS.md`
 - `server/lib/customware/AGENTS.md`
 - `server/api/AGENTS.md`
 
@@ -26,6 +32,7 @@ Examples:
 - `/mod/_core/framework/js/initFw.js`
 - `/mod/_core/router/view.html`
 - `/mod/_core/documentation/documentation.js`
+- `/mod/_core/file_explorer/view.html`
 - `/mod/_core/huggingface/view.html`
 - `/mod/_core/webllm/view.html`
 
@@ -39,7 +46,9 @@ Important route rules:
 
 - `#/agent` -> `/mod/_core/agent/view.html`
 - `#/dashboard` -> `/mod/_core/dashboard/view.html`
+- `#/file_explorer` -> `/mod/_core/file_explorer/view.html`
 - `#/huggingface` -> `/mod/_core/huggingface/view.html`
+- `#/time_travel` -> `/mod/_core/time_travel/view.html`
 - `#/webllm` -> `/mod/_core/webllm/view.html`
 - `#/author/repo/path` -> `/mod/author/repo/path/view.html`
 - if the last route segment already ends in `.html`, the router resolves directly to that file under `/mod/...`
@@ -71,7 +80,9 @@ Important shared router seams include:
 
 Current first-party shell extension example:
 
-- `_core/onscreen_menu` mounts into `_core/router/shell_start` and owns the top-right routed page menu, which lists Dashboard then Agent then Admin plus auth-dependent Logout or Leave actions
+- `_core/onscreen_menu` mounts into `_core/router/shell_start`, owns the top-right routed page menu shell, keeps a Home button that routes to the empty default route `#/`, exposes `_core/onscreen_menu/items` for feature-owned menu buttons, sorts contributed items by numeric `data-order`, and renders only the auth-dependent Logout or Leave action locally after that seam
+- `_core/agent`, `_core/file_explorer`, `_core/time_travel`, and `_core/admin` each contribute their own top-right menu item through `_core/onscreen_menu/items` with `data-order` values `100`, `200`, `300`, and `400` instead of being hardcoded into the menu shell
+- the `_core/admin` shell keeps its admin tabs in the left-pane topbar and ends that topbar with a leave-admin icon button that returns to the current iframe URL
 
 ## JavaScript Extension Hooks
 
@@ -105,8 +116,12 @@ Current first-party example:
 
 - `_core/pages` discovers dashboard page manifests from `mod/<author>/<repo>/ext/pages/*.yaml` through `extensions_load`
 - `_core/agent` publishes `ext/pages/agent.yaml` so the dashboard can launch the routed agent settings page without hardcoding it into dashboard or router; that route stays self-contained inside the module, keeps the astronaut info card, exposes only the external repo CTA, and edits the raw `~/conf/personality.system.include.md` prompt-include file
+- `_core/file_explorer` publishes `ext/pages/file_explorer.yaml` for the `#/file_explorer` Files route and also exposes `component.html` so the admin Files tab can reuse the same app-file browser without owning a second implementation
+- `_core/huggingface` publishes `ext/pages/huggingface.yaml` so the dashboard can launch the `Local LLM` page backed by the routed Hugging Face browser runtime
+- `_core/time_travel` publishes `ext/pages/time_travel.yaml` for the `#/time_travel` route, where the current user starts on their own `~` Git history, can pick another writable `L1` or `L2` history repository, page and filter commits, inspect file diffs, travel back to a commit, or revert a commit as a new change
+- `_core/webllm` still has a direct manual `#/webllm` route, but it does not publish a dashboard page manifest
 - each page manifest defines display metadata such as `name`, `path`, optional `description`, optional `icon`, and optional `color`
-- page `path` values may be shorthand route paths such as `webllm`, prefixed hash paths such as `#/webllm`, or direct `/mod/...` HTML paths such as `/mod/_core/webllm/view.html`
+- page `path` values may be shorthand route paths such as `huggingface`, prefixed hash paths such as `#/huggingface`, or direct `/mod/...` HTML paths such as `/mod/_core/huggingface/view.html`
 - page manifests are module assets, not writable app-file state
 
 ## `<x-component>`
@@ -147,6 +162,9 @@ Important dialog rules:
 - use `dialog-card-shell` plus `dialog-scroll-body` or `dialog-scroll-frame` when a modal has long content and persistent footer actions
 - use `dialog-actions-split` and related dialog action helpers for compact split footers instead of feature-local inline flex layout
 - do not put overflow on the full dialog card when the footer must stay reachable; scroll only the inner body or framed content region
+
+Shared dropdown and overflow menus should use `_core/visual/chrome/popover.js`.
+Its auto placement flips upward once bottom space drops below `2.2x` the measured panel height and top space is larger, which keeps row menus from opening into cramped bottom-edge space with unnecessary inner scrolling.
 
 ## Override Rules
 

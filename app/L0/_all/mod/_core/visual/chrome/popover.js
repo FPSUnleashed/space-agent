@@ -1,5 +1,6 @@
 const DEFAULT_VIEWPORT_MARGIN = 12;
 const DEFAULT_GAP = 8;
+const AUTO_PLACEMENT_BOTTOM_SPACE_MULTIPLIER = 2.2;
 const MIN_POPOVER_HEIGHT = 120;
 
 function clamp(value, minimum, maximum) {
@@ -24,13 +25,14 @@ export function positionPopover(panel, anchor, options = {}) {
   const panelRect = panel.getBoundingClientRect();
   const measuredPanelHeight = Math.max(MIN_POPOVER_HEIGHT, panelRect.height);
   const bottomSpace = globalThis.innerHeight - anchorRect.bottom - gap - viewportMargin;
+  const bottomSpaceThreshold = measuredPanelHeight * AUTO_PLACEMENT_BOTTOM_SPACE_MULTIPLIER;
   const topSpace = anchorRect.top - gap - viewportMargin;
   const shouldOpenUpward =
     placement === "top"
       ? true
       : placement === "bottom"
         ? false
-        : bottomSpace < measuredPanelHeight && topSpace > bottomSpace;
+        : bottomSpace < bottomSpaceThreshold && topSpace > bottomSpace;
   const maxHeight = Math.max(MIN_POPOVER_HEIGHT, shouldOpenUpward ? topSpace : bottomSpace);
   const panelHeight = Math.min(measuredPanelHeight, maxHeight);
   const maximumLeft = Math.max(viewportMargin, globalThis.innerWidth - panelRect.width - viewportMargin);

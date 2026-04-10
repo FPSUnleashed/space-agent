@@ -43,12 +43,8 @@ function normalizeStoredConfig(parsedConfig) {
   const rawStoredProvider = storedConfig.llm_provider || storedConfig.provider;
   const storedMaxTokens =
     storedConfig.max_tokens ?? storedConfig.maxTokens ?? config.DEFAULT_ADMIN_CHAT_SETTINGS.maxTokens;
-  const provider = rawStoredProvider === "webllm"
-    ? config.ADMIN_CHAT_LLM_PROVIDER.LOCAL
-    : config.normalizeAdminChatLlmProvider(rawStoredProvider);
-  const localProvider = rawStoredProvider === "webllm"
-    ? config.ADMIN_CHAT_LOCAL_PROVIDER.WEBLLM
-    : config.normalizeAdminChatLocalProvider(storedConfig.local_provider || storedConfig.localProvider);
+  const provider = config.normalizeAdminChatLlmProvider(rawStoredProvider);
+  const localProvider = config.normalizeAdminChatLocalProvider(storedConfig.local_provider || storedConfig.localProvider);
 
   return {
     settings: {
@@ -64,10 +60,7 @@ function normalizeStoredConfig(parsedConfig) {
       maxTokens: config.normalizeAdminChatMaxTokens(storedMaxTokens),
       model: String(storedConfig.model || config.DEFAULT_ADMIN_CHAT_SETTINGS.model || "").trim(),
       paramsText: String(storedConfig.params || storedConfig.paramsText || config.DEFAULT_ADMIN_CHAT_SETTINGS.paramsText || "").trim(),
-      provider,
-      webllmModel: String(
-        storedConfig.webllm_model || storedConfig.webllmModel || config.DEFAULT_ADMIN_CHAT_SETTINGS.webllmModel || ""
-      ).trim()
+      provider
     },
     systemPrompt: String(
       storedConfig.custom_system_prompt ||
@@ -90,8 +83,7 @@ function buildStoredConfigPayload({ settings, systemPrompt }) {
     llm_provider: config.normalizeAdminChatLlmProvider(settings?.provider),
     max_tokens: config.normalizeAdminChatMaxTokens(settings?.maxTokens),
     model: String(settings?.model || config.DEFAULT_ADMIN_CHAT_SETTINGS.model || "").trim(),
-    params: String(settings?.paramsText || config.DEFAULT_ADMIN_CHAT_SETTINGS.paramsText || "").trim(),
-    webllm_model: String(settings?.webllmModel || config.DEFAULT_ADMIN_CHAT_SETTINGS.webllmModel || "").trim()
+    params: String(settings?.paramsText || config.DEFAULT_ADMIN_CHAT_SETTINGS.paramsText || "").trim()
   };
 
   if (normalizedSystemPrompt) {

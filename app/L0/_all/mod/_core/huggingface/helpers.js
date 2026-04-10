@@ -1,5 +1,6 @@
 export const DEFAULT_SYSTEM_PROMPT = "You are a helpful assistant.";
 export const DEFAULT_DTYPE = "q4";
+export const DEFAULT_MODEL_INPUT = "onnx-community/gemma-4-E4B-it-ONNX";
 export const DEFAULT_MAX_NEW_TOKENS = 16384;
 export const COMPATIBLE_MODELS_URL = "https://huggingface.co/onnx-community/models";
 export const HUGGINGFACE_SAVED_MODELS_STORAGE_KEY = "space.huggingface.saved-models";

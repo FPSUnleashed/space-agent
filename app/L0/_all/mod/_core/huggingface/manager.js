@@ -3,6 +3,7 @@ import {
   createSavedModelEntry,
   DEFAULT_DTYPE,
   DEFAULT_MAX_NEW_TOKENS,
+  DEFAULT_MODEL_INPUT,
   discardCachedModelEntries,
   describeModelSelection,
   DTYPE_OPTIONS,
@@ -20,7 +21,6 @@ import { WORKER_INBOUND, WORKER_OUTBOUND } from "/mod/_core/huggingface/protocol
 
 const HUGGINGFACE_CONFIG_ROUTE = "/#/huggingface";
 const PERSISTED_MODEL_STORAGE_KEY = "space.huggingface.last-loaded-model";
-const DEFAULT_MODEL_INPUT = "onnx-community/gemma-4-E4B-it-ONNX";
 
 function isPlainObject(value) {
   if (!value || Object.prototype.toString.call(value) !== "[object Object]") {

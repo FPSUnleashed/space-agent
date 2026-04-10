@@ -3,6 +3,7 @@ import {
   createGroup,
   removeGroupEntry
 } from "../server/lib/customware/group_files.js";
+import { flushGitHistoryCommits } from "../server/lib/customware/git_history.js";
 import { createRuntimeParams } from "../server/lib/utils/runtime_params.js";
 
 function takeFlagValue(args, index, flagName) {
@@ -125,7 +126,7 @@ export const help = {
     "node space group remove <group-id> <user|group> <id> [--manager]"
   ],
   description:
-    "Creates and updates writable L1 group directories. When CUSTOMWARE_PATH is configured they are stored under CUSTOMWARE_PATH/L1 instead of app/L1. This command never writes L0 firmware groups.",
+    "Creates and updates writable L1 group directories. When CUSTOMWARE_PATH is configured they are stored under CUSTOMWARE_PATH/L1 instead of app/L1. This command never writes L0 firmware groups. Adding a member creates the target writable L1 group when it does not already exist.",
   arguments: [
     {
       name: "<group-id>",
@@ -147,7 +148,7 @@ export const help = {
     },
     {
       flag: "add",
-      description: "Add a user or group entry to the target group's included_* list, or to the managing_* list with --manager."
+      description: "Add a user or group entry to the target group's included_* list, or to the managing_* list with --manager. The target group is created if missing."
     },
     {
       flag: "remove",
@@ -184,6 +185,7 @@ export async function execute(context) {
       force: options.force,
       runtimeParams
     });
+    await flushGitHistoryCommits({ throwOnError: true });
     console.log(`Created group ${result.layer}/${result.groupId}`);
     return 0;
   }
@@ -200,6 +202,7 @@ export async function execute(context) {
         runtimeParams
       }
     );
+    await flushGitHistoryCommits({ throwOnError: true });
     console.log(
       `Added ${options.entryType} ${options.entryId} as ${describeRole(options)} of L1/${options.groupId}`
     );
@@ -218,6 +221,7 @@ export async function execute(context) {
         runtimeParams
       }
     );
+    await flushGitHistoryCommits({ throwOnError: true });
     console.log(
       `Removed ${options.entryType} ${options.entryId} from ${describeRole(options)} list of L1/${options.groupId}`
     );

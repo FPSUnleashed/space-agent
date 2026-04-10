@@ -13,6 +13,7 @@ helper
 workflow
 - Start with the built-in documentation index below unless you already know the exact doc path
 - Use one focused `read("path/to/file.md")` call instead of loading many large docs blindly
+- Treat `/README.md` as the public product source of truth for the project pitch, quick starts, release links, community links, and DeepWiki discovery
 - After orientation, confirm the concrete contract in the owning `AGENTS.md` file and then inspect code when needed
 - Keep the repo's frontend-first rule in mind while reading: backend docs explain constraints and existing contracts, not default permission to edit `server/`
 - If the change appears to require backend work and the user did not explicitly ask for backend edits, ask for permission and explain the security, integrity, or stability reason before changing backend files
@@ -36,7 +37,7 @@ recommended starting points
 - app-file APIs: `server/api/files.md`
 - module, login, or runtime endpoints: `server/api/modules-and-runtime.md`
 - auth and sessions: `server/auth-and-sessions.md`
-- layered filesystem or `CUSTOMWARE_PATH`: `server/customware-layers-and-paths.md`
+- layered filesystem, `CUSTOMWARE_PATH`, or writable-layer history: `server/customware-layers-and-paths.md`
 - CLI commands or runtime params: `cli/commands-and-runtime-params.md`
 
 docs path|name|description↓
@@ -44,7 +45,7 @@ architecture/overview.md|Runtime Overview|Browser-first architecture, major entr
 architecture/desktop-host-and-packaging.md|Desktop Host And Packaging|Electron host startup, free-port binding, packaged single-user behavior, and desktop build outputs.
 architecture/documentation-system.md|Documentation System|How `AGENTS.md`, the documentation module, and code fit together, plus update rules.
 app/runtime-and-layers.md|App Runtime And Layers|Frontend boot flow, `space` runtime namespaces, entry shells, and `L0/L1/L2` rules.
-app/admin-agent-runtime.md|Admin Agent Runtime|Admin chat ownership, config persistence, shared execution loop, and API-versus-WebLLM transport switching.
+app/admin-agent-runtime.md|Admin Agent Runtime|Admin chat ownership, config persistence, shared execution loop, and API-versus-local-Hugging-Face transport switching.
 app/modules-and-extensions.md|Modules And Extensions|`/mod/...` delivery, router path resolution, `ext/html`, `ext/js`, and `<x-component>` behavior.
 app/huggingface-browser-runtime.md|Hugging Face Browser Runtime|The routed Transformers.js test surface, its worker split, direct Hub model loading contract, and throughput metrics.
 app/webllm-browser-runtime.md|WebLLM Browser Runtime|The routed WebLLM test surface, its worker split, model-loading modes, and throughput metrics contract.
@@ -53,10 +54,10 @@ agent/onscreen-agent-runtime.md|Onscreen Agent Runtime|Overlay ownership, persis
 agent/prompt-and-execution.md|Prompt And Execution|Prompt assembly order, message markers, execution transcript rules, and compaction behavior.
 agent/skills-and-documentation.md|Skills And Documentation|Skill discovery rules, top-level versus nested skills, conflict rules, and the documentation skill/helper contract.
 server/request-flow-and-pages.md|Request Flow And Pages|Exact server routing order, page shell contracts, auth gating, and direct app-file fetches.
-server/api/files.md|File APIs|The authenticated file endpoints, path forms, batch semantics, and folder downloads.
+server/api/files.md|File APIs|The authenticated file endpoints, path forms, writable discovery, folder downloads, and optional local history APIs.
 server/api/modules-and-runtime.md|Module And Runtime APIs|Module endpoints, login/runtime endpoints, `extensions_load`, and identity helpers.
 server/auth-and-sessions.md|Auth And Sessions|User storage layout, sealed password/session records, and login/runtime auth behavior.
-server/customware-layers-and-paths.md|Customware Layers And Paths|Logical-versus-disk paths, permission rules, override order, and `maxLayer`.
+server/customware-layers-and-paths.md|Customware Layers And Paths|Logical-versus-disk paths, permission rules, optional writable-layer history, override order, and `maxLayer`.
 cli/commands-and-runtime-params.md|Commands And Runtime Params|`space.js`, command families, runtime-param precedence, and the current schema surface.
 
 examples

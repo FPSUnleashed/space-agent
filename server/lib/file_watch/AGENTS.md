@@ -42,6 +42,7 @@ Current default handlers:
 
 - tracks every currently existing file and directory under the watched logical app tree
 - is the canonical fast lookup for file existence and listing
+- excludes `.git` directories and their contents so per-owner local history metadata is not exposed as app files and does not create watchdog churn
 
 `group_index`:
 

@@ -29,14 +29,14 @@ Current public shell assets:
 `index.html`:
 
 - loads shared framework CSS and `/mod/_core/framework/js/initFw.js`
-- when the current request already has launcher access, receives a page-shell guard before `/mod/...` assets so a new tab or window is redirected to `/enter?next=<current-url>` before customware loads
+- when the current request already has launcher access, receives a page-shell guard before `/mod/...` assets so a new browser-opened tab or window is redirected to `/enter?next=<current-url>` before customware loads; framework-created same-origin `_blank` opens may pre-grant the same tab-access marker before loading this shell
 - receives injected `meta[name="space-config"]` tags for any `frontend_exposed` runtime parameters
 - keeps the body minimal and exposes exactly the `body/start` extension anchor
 
 `admin.html`:
 
 - loads the same framework bootstrap with `?maxLayer=0`
-- when the current request already has launcher access, receives the same page-shell guard before `/mod/...` assets so a new tab or window is redirected to `/enter?next=<current-url>` before admin shell assets load
+- when the current request already has launcher access, receives the same page-shell guard before `/mod/...` assets so a new browser-opened tab or window is redirected to `/enter?next=<current-url>` before admin shell assets load; framework-created same-origin `_blank` opens may pre-grant the same tab-access marker before loading this shell
 - declares `meta[name="space-max-layer"]` with content `0`
 - receives the same injected `meta[name="space-config"]` tags for `frontend_exposed` runtime parameters
 - keeps the body minimal and exposes exactly the `page/admin/body/start` extension anchor

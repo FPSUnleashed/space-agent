@@ -1,5 +1,6 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
+import { recordAppPathMutations } from "../customware/git_history.js";
 import { normalizeEntityId } from "../customware/layout.js";
 import {
   SINGLE_USER_APP_USERNAME,
@@ -499,6 +500,13 @@ export function createAuthService(options = {}) {
     );
 
     writeUserLogins(projectRoot, challenge.username, logins, runtimeParams);
+    recordAppPathMutations(
+      {
+        projectRoot,
+        runtimeParams
+      },
+      [`/app/L2/${challenge.username}/meta/logins.json`]
+    );
 
     if (watchdog && typeof watchdog.refresh === "function") {
       await watchdog.refresh();
@@ -536,6 +544,13 @@ export function createAuthService(options = {}) {
 
     delete logins[sessionVerifier];
     writeUserLogins(projectRoot, normalizedUsername, logins, runtimeParams);
+    recordAppPathMutations(
+      {
+        projectRoot,
+        runtimeParams
+      },
+      [`/app/L2/${normalizedUsername}/meta/logins.json`]
+    );
 
     if (watchdog && typeof watchdog.refresh === "function") {
       await watchdog.refresh();
@@ -580,6 +595,13 @@ export function createAuthService(options = {}) {
         JSON.stringify(passwordRecord || {}) !== JSON.stringify(migratedPasswordRecord)
       ) {
         writeUserPasswordVerifier(projectRoot, normalizedUsername, migratedPasswordRecord, runtimeParams);
+        recordAppPathMutations(
+          {
+            projectRoot,
+            runtimeParams
+          },
+          [`/app/L2/${normalizedUsername}/meta/password.json`]
+        );
         changed = true;
       }
 
@@ -587,6 +609,13 @@ export function createAuthService(options = {}) {
         JSON.stringify(currentLogins || {}) !== JSON.stringify(sanitizedLogins)
       ) {
         writeUserLogins(projectRoot, normalizedUsername, sanitizedLogins, runtimeParams);
+        recordAppPathMutations(
+          {
+            projectRoot,
+            runtimeParams
+          },
+          [`/app/L2/${normalizedUsername}/meta/logins.json`]
+        );
         changed = true;
       }
     });

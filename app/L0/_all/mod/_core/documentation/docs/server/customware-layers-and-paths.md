@@ -7,6 +7,8 @@ This doc covers the layered filesystem model behind `/mod/...` and the app-file 
 - `server/lib/customware/AGENTS.md`
 - `server/lib/customware/layout.js`
 - `server/lib/customware/file_access.js`
+- `server/lib/customware/group_files.js`
+- `server/lib/customware/git_history.js`
 - `server/lib/customware/module_inheritance.js`
 - `server/lib/customware/extension_overrides.js`
 - `server/lib/customware/layer_limit.js`
@@ -43,6 +45,27 @@ Core rules:
 
 `file_access.js` is the canonical owner of these checks.
 
+## Optional Git History
+
+`CUSTOMWARE_GIT_HISTORY` can turn writable owner roots into local history repositories.
+
+Current contract:
+
+- the parameter defaults to `false`
+- each writable `L1/<group>/` and `L2/<user>/` root is its own local Git repository when history is enabled
+- mutations schedule a commit after 10 seconds of quiet for that owner root
+- if an owner root keeps receiving writes, the debounce drops to 5 seconds after 1 minute of waiting, 1 second after 5 minutes, and immediate commit after 10 minutes
+- pending commits are flushed during server shutdown
+- history listing is paginated with `limit` and `offset`, may filter by changed file path or nested filename substring, and returns metadata plus full per-commit file action entries for listed commits without loading full diffs
+- repository discovery for browser pickers goes through `file_list` or `file_paths` with `gitRepositories: true` and, when needed, `access: "write"`; the response contains writable owner roots such as `L1/<group>/` and `L2/<user>/`, never `.git` metadata paths
+- file diff reads, operation previews, and commit revert operations are separate history helper calls
+- operation previews require write access and return affected-file metadata for travel or revert, plus an operation-specific patch when a single file is requested
+- rollback resets the owner root to a requested commit, preserves the previous head for forward travel when possible, and suppresses history scheduling so rollback does not create a commit loop
+- revert creates a new history commit with inverse changes instead of resetting the owner root to the selected commit
+- owner repos carry a `.gitignore`; `L2` repos ignore `meta/password.json` and `meta/logins.json`, while `L1` repos currently use an empty ignore file
+- rollback preserves ignored L2 auth files so old commits cannot log the user out or restore an old password verifier
+- `.git` paths are reserved infrastructure and are excluded from path indexes, app-file APIs, and direct app fetches
+
 ## Group Graph
 
 `group.yaml` is the canonical input for group membership and management.
@@ -55,6 +78,10 @@ Current fields:
 - `managing_groups`
 
 `group_index.js` derives the readable and manageable graph from those files.
+
+CLI group writes go through `group_files.js`. `node space group add` and `node space user create --groups ...` create the target writable `L1/<group>/` root when it is missing, then write membership to `group.yaml`. This also works for predefined runtime group ids such as `_admin`, whose group identity exists even before a writable `L1/_admin/group.yaml` file is created.
+
+When `CUSTOMWARE_PATH` is configured, run `node space set CUSTOMWARE_PATH <path>` before creating users or groups so those CLI writes land under the configured `CUSTOMWARE_PATH/L1` and `CUSTOMWARE_PATH/L2` roots.
 
 ## Override Order
 

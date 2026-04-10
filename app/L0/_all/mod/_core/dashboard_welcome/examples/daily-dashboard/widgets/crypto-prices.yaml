@@ -5,12 +5,13 @@ renderer: |-
   async (parent, currentSpace) => {
       const updatePrices = async () => {
         try {
-          const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd&include_24hr_change=true');
+          const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,solana&vs_currencies=usd&include_24hr_change=true');
           const data = await response.json();
           
           const coins = [
             { id: 'bitcoin', name: 'Bitcoin', symbol: 'BTC', data: data.bitcoin },
-            { id: 'ethereum', name: 'Ethereum', symbol: 'ETH', data: data.ethereum }
+            { id: 'ethereum', name: 'Ethereum', symbol: 'ETH', data: data.ethereum },
+            { id: 'solana', name: 'Solana', symbol: 'SOL', data: data.solana }
           ];
 
           parent.innerHTML = `

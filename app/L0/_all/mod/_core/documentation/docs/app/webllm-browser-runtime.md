@@ -18,7 +18,7 @@ The routed test page lives at:
 #/webllm
 ```
 
-This route is also advertised to the dashboard pages index through `_core/webllm/ext/pages/webllm.yaml`, using the shorthand manifest path `webllm`.
+This route is not advertised to the dashboard pages index. The Hugging Face-backed `#/huggingface` route is the only dashboard-listed Local LLM page.
 
 This module is intentionally a manual browser-only test harness:
 
@@ -42,15 +42,13 @@ It is not a second agent runtime. There is no tool execution, attachment handlin
 
 Ownership split:
 
-- `config-sidebar.html` owns the standalone model-loading sidebar component and is mounted by both `view.html` and the admin-agent local modal through `<x-component>`
+- `config-sidebar.html` owns the standalone model-loading sidebar component mounted by `view.html` through `<x-component>`
 - `store.js` owns the routed page, Alpine store state, and worker lifecycle
 - `webllm-worker.js` owns `MLCEngine`, model reloads, streaming chat calls, and stop/reset actions
 - `protocol.js` owns the postMessage event names shared between the page and worker
 - `web-llm.js` is the vendored browser build of `@mlc-ai/web-llm`, kept local to the module instead of promoted into `_core/framework`
 
 That split keeps the route self-contained and avoids a repo-wide frontend dependency seam for an experimental test surface.
-
-In admin mode, that shared sidebar should show both the currently loaded model and the separately selected model so the admin selector does not look inert while a model is configured but not yet loaded.
 
 ## Model Loading Contract
 
@@ -73,7 +71,6 @@ Custom-load rules:
 - the routed page persists the last successfully loaded model config in browser storage and automatically reloads it on refresh
 - the advanced custom-model form is collapsed by default and its load action is isolated from the prebuilt model picker
 - arbitrary Hugging Face repo discovery is intentionally not exposed as a normal load path because official WebLLM custom loading still needs MLC/WebLLM-compiled artifacts plus a compatible `model_lib` wasm
-- the same `config-sidebar.html` file also has an `admin` mode used inside the admin agent's `Local > WebLLM` settings surface, where it renders the current-model block, the full prebuilt selector, direct download or load or unload actions, live progress, and a button that opens the full WebLLM testing chat route
 
 WebLLM itself owns browser-side downloads and caching. `_core/webllm` only forwards progress reports and load results into the route UI.
 

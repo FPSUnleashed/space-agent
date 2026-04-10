@@ -23,12 +23,32 @@ function readRecursive(context) {
   return ["1", "true", "yes", "on"].includes(String(rawValue || "").trim().toLowerCase());
 }
 
+function readAccess(context) {
+  const payload = readPayload(context);
+  return String(payload.access || context.params.access || "");
+}
+
+function readBooleanOption(context, name) {
+  const payload = readPayload(context);
+  const rawValue = payload[name] !== undefined ? payload[name] : context.params[name];
+
+  if (typeof rawValue === "boolean") {
+    return rawValue;
+  }
+
+  return ["1", "true", "yes", "on"].includes(String(rawValue || "").trim().toLowerCase());
+}
+
 function handleList(context) {
   try {
     return listAppPaths({
+      access: readAccess(context),
+      gitRepositories: readBooleanOption(context, "gitRepositories"),
       path: readPath(context),
+      projectRoot: context.projectRoot,
       recursive: readRecursive(context),
       runtimeParams: context.runtimeParams,
+      writableOnly: readBooleanOption(context, "writableOnly"),
       username: context.user?.username,
       watchdog: context.watchdog
     });

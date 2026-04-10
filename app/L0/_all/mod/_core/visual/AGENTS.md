@@ -34,7 +34,7 @@ Canvas:
 Chrome:
 
 - `chrome/topbar.css` owns the shared glass topbar and menu-panel contract used by routed menus and admin tabs
-- `chrome/popover.css` plus `chrome/popover.js` own the shared fixed-position dropdown or overflow-menu positioning contract
+- `chrome/popover.css` plus `chrome/popover.js` own the shared fixed-position dropdown or overflow-menu positioning contract; auto placement should flip upward once available bottom space drops below `2.2x` the measured panel height and top space is larger, so row menus avoid cramped bottom-edge inner scrolling
 - `chrome/toast.css` plus `chrome/toast.js` own the shared fixed-position toast stack and register `space.visual.showToast(message, options)`
 
 Icons:

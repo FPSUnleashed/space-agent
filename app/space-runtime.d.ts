@@ -22,13 +22,23 @@ type SpaceApiCallOptions = {
 };
 
 type SpaceFileApiResult = {
+  access?: "read" | "write" | string;
   endpoint?: string;
+  gitRepositories?: boolean;
   recursive?: boolean;
   paths?: string[];
   path: string;
   content?: string;
   encoding?: string;
   bytesWritten?: number;
+};
+
+type SpaceFileListOptions = {
+  access?: "read" | "write" | string;
+  gitRepositories?: boolean;
+  path?: string;
+  recursive?: boolean;
+  writableOnly?: boolean;
 };
 
 type SpaceFileBatchApiResult = {
@@ -100,6 +110,89 @@ type SpaceUserSelfInfo = {
   username: string;
 };
 
+type SpaceGitHistoryFile = {
+  action?: "added" | "modified" | "deleted" | string;
+  oldPath?: string;
+  path: string;
+  status?: string;
+};
+
+type SpaceGitHistoryCommit = {
+  changedFiles: string[];
+  files?: SpaceGitHistoryFile[];
+  hash: string;
+  message: string;
+  shortHash: string;
+  timestamp: string;
+};
+
+type SpaceGitHistoryListOptions = {
+  fileFilter?: string;
+  filter?: string;
+  limit?: number;
+  offset?: number;
+  path?: string;
+};
+
+type SpaceGitHistoryListResult = {
+  backend: string;
+  commits: SpaceGitHistoryCommit[];
+  currentHash?: string;
+  enabled: boolean;
+  hasMore?: boolean;
+  limit?: number;
+  offset?: number;
+  path: string;
+  total?: number | null;
+};
+
+type SpaceGitHistoryCommitOptions = {
+  commit?: string;
+  commitHash?: string;
+  hash?: string;
+  path?: string;
+};
+
+type SpaceGitHistoryDiffOptions = SpaceGitHistoryCommitOptions & {
+  file?: string;
+  filePath?: string;
+  pathWithinCommit?: string;
+};
+
+type SpaceGitHistoryPreviewOptions = SpaceGitHistoryDiffOptions & {
+  operation?: "travel" | "revert" | string;
+};
+
+type SpaceGitHistoryMutationResult = {
+  backend: string;
+  hash: string;
+  path: string;
+  revertedHash?: string;
+  shortHash: string;
+};
+
+type SpaceGitHistoryDiffResult = {
+  backend: string;
+  file: SpaceGitHistoryFile;
+  hash: string;
+  patch: string;
+  path: string;
+  shortHash: string;
+};
+
+type SpaceGitHistoryPreviewResult = {
+  backend: string;
+  changedFiles?: string[];
+  currentHash?: string;
+  file?: SpaceGitHistoryFile | null;
+  files?: SpaceGitHistoryFile[];
+  hash: string;
+  operation?: string;
+  patch?: string;
+  path: string;
+  shortHash: string;
+};
+
 type SpaceApi = {
   call<T = unknown>(endpointName: string, callOptions?: SpaceApiCallOptions): Promise<T>;
   fileCopy(path: string, toPath: string): Promise<SpaceFileApiResult>;
@@ -110,7 +203,7 @@ type SpaceApi = {
   fileDelete(path: SpaceFileDeleteInput): Promise<SpaceFileApiResult>;
   fileDelete(paths: SpaceFileDeleteInput[]): Promise<SpacePathBatchApiResult>;
   fileDelete(options: SpaceFileDeleteBatchOptions): Promise<SpacePathBatchApiResult>;
-  fileList(path: string, recursive?: boolean): Promise<SpaceFileApiResult>;
+  fileList(pathOrOptions: string | SpaceFileListOptions, recursive?: boolean): Promise<SpaceFileApiResult>;
   fileRead(path: string, encoding?: string): Promise<SpaceFileApiResult>;
   fileRead(file: SpaceFileReadInput): Promise<SpaceFileApiResult>;
   fileRead(files: SpaceFileReadInput[], encoding?: string): Promise<SpaceFileBatchApiResult>;
@@ -119,6 +212,11 @@ type SpaceApi = {
   fileWrite(file: SpaceFileWriteInput): Promise<SpaceFileApiResult>;
   fileWrite(files: SpaceFileWriteInput[], encoding?: string): Promise<SpaceFileBatchApiResult>;
   fileWrite(options: SpaceFileWriteBatchOptions): Promise<SpaceFileBatchApiResult>;
+  gitHistoryDiff(pathOrOptions: string | SpaceGitHistoryDiffOptions, commitHash?: string, filePath?: string): Promise<SpaceGitHistoryDiffResult>;
+  gitHistoryList(pathOrOptions?: string | SpaceGitHistoryListOptions, limit?: number): Promise<SpaceGitHistoryListResult>;
+  gitHistoryPreview(pathOrOptions?: string | SpaceGitHistoryPreviewOptions, commitHash?: string, operation?: string, filePath?: string): Promise<SpaceGitHistoryPreviewResult>;
+  gitHistoryRollback(pathOrOptions?: string | SpaceGitHistoryCommitOptions, commitHash?: string): Promise<SpaceGitHistoryMutationResult>;
+  gitHistoryRevert(pathOrOptions?: string | SpaceGitHistoryCommitOptions, commitHash?: string): Promise<SpaceGitHistoryMutationResult>;
   health(): Promise<SpaceHealthResult>;
   userSelfInfo(): Promise<SpaceUserSelfInfo>;
 };

@@ -1,6 +1,13 @@
 export const ONSCREEN_AGENT_CONFIG_PATH = "~/conf/onscreen-agent.yaml";
 export const ONSCREEN_AGENT_HISTORY_PATH = "~/hist/onscreen-agent.json";
 export const DEFAULT_ONSCREEN_AGENT_MAX_TOKENS = 64_000;
+export const ONSCREEN_AGENT_LLM_PROVIDER = Object.freeze({
+  API: "api",
+  LOCAL: "local"
+});
+export const ONSCREEN_AGENT_LOCAL_PROVIDER = Object.freeze({
+  HUGGINGFACE: "huggingface"
+});
 export const ONSCREEN_AGENT_HIDDEN_EDGE = Object.freeze({
   BOTTOM: "bottom",
   LEFT: "left",
@@ -11,19 +18,84 @@ export const ONSCREEN_AGENT_HIDDEN_EDGE = Object.freeze({
 export const DEFAULT_ONSCREEN_AGENT_SETTINGS = {
   apiEndpoint: "https://openrouter.ai/api/v1/chat/completions",
   apiKey: "",
+  huggingfaceDtype: "q4",
+  huggingfaceModel: "",
+  localProvider: ONSCREEN_AGENT_LOCAL_PROVIDER.HUGGINGFACE,
   maxTokens: DEFAULT_ONSCREEN_AGENT_MAX_TOKENS,
   model: "openai/gpt-5.4-mini",
-  paramsText: "temperature:0.2"
+  paramsText: "temperature:0.2",
+  provider: ONSCREEN_AGENT_LLM_PROVIDER.API
 };
 
 function normalizeOnscreenAgentSettingText(value) {
   return String(value ?? "").trim();
 }
 
+export function normalizeOnscreenAgentLlmProvider(value) {
+  return value === ONSCREEN_AGENT_LLM_PROVIDER.LOCAL
+    ? ONSCREEN_AGENT_LLM_PROVIDER.LOCAL
+    : ONSCREEN_AGENT_LLM_PROVIDER.API;
+}
+
+export function normalizeOnscreenAgentLocalProvider(value) {
+  return ONSCREEN_AGENT_LOCAL_PROVIDER.HUGGINGFACE;
+}
+
+export function createOnscreenAgentHuggingFaceSelectionValue(modelId, dtype) {
+  const normalizedModelId = String(modelId || "").trim();
+  const normalizedDtype = String(dtype || "").trim();
+
+  if (!normalizedModelId || !normalizedDtype) {
+    return "";
+  }
+
+  return JSON.stringify({
+    dtype: normalizedDtype,
+    modelId: normalizedModelId
+  });
+}
+
+export function parseOnscreenAgentHuggingFaceSelectionValue(value) {
+  const rawValue = String(value || "").trim();
+
+  if (!rawValue) {
+    return {
+      dtype: "",
+      modelId: ""
+    };
+  }
+
+  try {
+    const parsedValue = JSON.parse(rawValue);
+
+    return {
+      dtype: String(parsedValue?.dtype || "").trim(),
+      modelId: String(parsedValue?.modelId || "").trim()
+    };
+  } catch {
+    return {
+      dtype: "",
+      modelId: ""
+    };
+  }
+}
+
+export function getOnscreenAgentLocalModelSelection(settings = {}) {
+  const provider = normalizeOnscreenAgentLocalProvider(settings.localProvider);
+
+  return {
+    dtype: String(settings.huggingfaceDtype || "").trim(),
+    modelId: String(settings.huggingfaceModel || "").trim(),
+    provider
+  };
+}
+
 export function isDefaultOnscreenAgentLlmSettings(settings) {
   const normalizedSettings = settings && typeof settings === "object" ? settings : {};
 
   return (
+    normalizeOnscreenAgentLlmProvider(normalizedSettings.provider) ===
+      DEFAULT_ONSCREEN_AGENT_SETTINGS.provider &&
     normalizeOnscreenAgentSettingText(normalizedSettings.apiEndpoint) ===
       normalizeOnscreenAgentSettingText(DEFAULT_ONSCREEN_AGENT_SETTINGS.apiEndpoint) &&
     normalizeOnscreenAgentSettingText(normalizedSettings.model) ===

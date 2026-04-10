@@ -20,32 +20,43 @@
           <aside class="pane admin-pane" aria-label="Admin panel">
             <main class="admin-pane-content">
               <div class="admin-page">
-                <header class="space-topbar admin-topbar" x-ref="tabBar" role="tablist" aria-label="Admin navigation">
-                  <template x-for="tab in $store.adminPage.tabs" :key="tab.id">
-                    <button
-                      :id="`admin-tab-${tab.id}`"
-                      class="space-topbar-button admin-tab-button"
-                      :class="{ 'is-active': $store.adminPage.isTabActive(tab.id) }"
-                      :data-tab-id="tab.id"
-                      :aria-label="tab.label"
-                      :aria-selected="String($store.adminPage.isTabActive(tab.id))"
-                      :tabindex="$store.adminPage.isTabActive(tab.id) ? 0 : -1"
-                      :title="tab.label"
-                      type="button"
-                      role="tab"
-                      :aria-controls="`admin-panel-${tab.id}`"
-                      @click="$store.adminPage.selectTab(tab.id)"
-                      @keydown="$store.adminPage.handleTabKeydown($event, tab.id)"
-                    >
-                      <template x-if="tab.avatarPath">
-                        <img class="admin-tab-avatar" :src="tab.avatarPath" alt="" />
-                      </template>
-                      <template x-if="!tab.avatarPath">
-                        <x-icon x-text="tab.icon"></x-icon>
-                      </template>
-                      <span class="admin-tab-label" x-text="tab.label"></span>
-                    </button>
-                  </template>
+                <header class="space-topbar admin-topbar" aria-label="Admin navigation">
+                  <div class="admin-tab-list" x-ref="tabBar" role="tablist" aria-label="Admin tabs">
+                    <template x-for="tab in $store.adminPage.tabs" :key="tab.id">
+                      <button
+                        :id="`admin-tab-${tab.id}`"
+                        class="space-topbar-button admin-tab-button"
+                        :class="{ 'is-active': $store.adminPage.isTabActive(tab.id) }"
+                        :data-tab-id="tab.id"
+                        :aria-label="tab.label"
+                        :aria-selected="String($store.adminPage.isTabActive(tab.id))"
+                        :tabindex="$store.adminPage.isTabActive(tab.id) ? 0 : -1"
+                        :title="tab.label"
+                        type="button"
+                        role="tab"
+                        :aria-controls="`admin-panel-${tab.id}`"
+                        @click="$store.adminPage.selectTab(tab.id)"
+                        @keydown="$store.adminPage.handleTabKeydown($event, tab.id)"
+                      >
+                        <template x-if="tab.avatarPath">
+                          <img class="admin-tab-avatar" :src="tab.avatarPath" alt="" />
+                        </template>
+                        <template x-if="!tab.avatarPath">
+                          <x-icon x-text="tab.icon"></x-icon>
+                        </template>
+                        <span class="admin-tab-label" x-text="tab.label"></span>
+                      </button>
+                    </template>
+                  </div>
+                  <button
+                    class="space-topbar-button space-topbar-button--icon admin-close-button"
+                    type="button"
+                    aria-label="Leave admin area"
+                    title="Leave admin area"
+                    @click="$store.adminShell.leaveAdminArea()"
+                  >
+                    <x-icon>exit_to_app</x-icon>
+                  </button>
                 </header>
 
                 <div class="admin-stage">

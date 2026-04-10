@@ -2,9 +2,9 @@
 
 ## Purpose
 
-`_core/admin/views/files/` owns the firmware-backed admin file browser.
+`_core/admin/views/files/` owns the admin Files tab adapter.
 
-It is the admin surface for browsing, selecting, editing, copying, moving, deleting, renaming, and downloading app-rooted files through the authenticated file APIs.
+The reusable file explorer now lives in `_core/file_explorer/`. This admin view keeps the existing admin tab mount point and delegates the actual UI, store, CSS, and file API workflow to the standalone component.
 
 Documentation is top priority for this surface. After any change under `views/files/`, update this file and any affected parent docs in the same session.
 
@@ -12,48 +12,18 @@ Documentation is top priority for this surface. After any change under `views/fi
 
 This surface owns:
 
-- `panel.html`: file-browser UI
-- `store.js`: navigation, selection, clipboard, dialogs, path memory, and file API orchestration
-- `files.css`: file-browser-specific layout and styling on top of shared visual primitives
+- `panel.html`: thin adapter that mounts `/mod/_core/file_explorer/component.html`
 
-## File API Contract
+## Runtime And API Contract
 
-This surface talks to the shared server file APIs through `space.api`.
-
-Current behavior:
-
-- the starting path is the authenticated user's home path `~/`
-- paths are app-rooted and may use `~` shorthand where supported
-- directory listing uses `space.api.fileList(...)`
-- metadata checks use `space.api.fileInfo(...)`
-- text reads and writes use `space.api.fileRead(...)` and `space.api.fileWrite(...)`
-- delete, copy, and move actions use the corresponding `space.api` helpers
-- files still download through direct authenticated app fetches
-- single-folder downloads use `space.api.folderDownloadUrl(...)`, which targets the streamed `/api/folder_download` ZIP attachment endpoint
-- downloads now preflight backend access before the browser transfer starts, and failures surface through the shared visual toast primitive instead of silently failing
-
-Current editor rule:
-
-- text editing is refused for files larger than `1 MB` based on `fileInfo(...)` metadata before the editor dialog opens
+`panel.html` must stay a thin `<x-component>` wrapper. The admin shell still mounts it from `_core/admin/views/shell/shell.html`, but all file API calls, state, dialogs, and styles are owned by `_core/file_explorer/`.
 
 ## UI And State Contract
 
-`store.js` owns:
-
-- editable current-path navigation
-- Up, Home, and Refresh actions
-- highlighted entry, selection, and per-directory scroll memory
-- row-level overflow actions through the shared popover contract, with post-open remeasurement so the menu stays left of the trigger and inside the viewport near the right edge
-- selection-summary actions when multiple paths are checked
-- clipboard state for cut or copied items plus paste into the current folder
-- shared dialogs for rename, delete confirmation, and text editing
-- file and folder download actions, with folders routed through the server ZIP endpoint
-- toast-based download error feedback for permission and not-found failures
-- inline reporting for not-found and permission errors
+The admin tab receives the same reusable component as the routed Files page. Do not add admin-only file browser state or styling here unless the admin shell needs a wrapper-specific layout adjustment.
 
 ## Development Guidance
 
-- keep file-browser state and workflow logic centralized in `store.js`
-- use shared visual primitives for buttons, popovers, cards, and dialogs instead of creating a second admin-only theme
-- keep server permission rules authoritative; do not duplicate them in the browser beyond UI affordances
-- if you change file-API expectations, update this file and the relevant server docs in the same session
+- keep this adapter thin; file-explorer changes belong in `_core/file_explorer/`
+- update `_core/file_explorer/AGENTS.md` when the component API, state, route, menu item, or file API workflow changes
+- update this file only when the admin mount contract changes

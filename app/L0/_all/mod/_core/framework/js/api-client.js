@@ -52,6 +52,16 @@
 
 /**
  * @typedef {{
+ *   access?: "read" | "write",
+ *   gitRepositories?: boolean,
+ *   path?: string,
+ *   recursive?: boolean,
+ *   writableOnly?: boolean
+ * }} FileListOptions
+ */
+
+/**
+ * @typedef {{
  *   count: number,
  *   paths: string[]
  * }} PathBatchApiResult
@@ -70,6 +80,70 @@
  *   count: number,
  *   entries: FileTransferInput[]
  * }} FileTransferBatchApiResult
+ */
+
+/**
+ * @typedef {{
+ *   action?: string,
+ *   oldPath?: string,
+ *   path: string,
+ *   status?: string
+ * }} GitHistoryFile
+ */
+
+/**
+ * @typedef {{
+ *   hash: string,
+ *   shortHash: string,
+ *   timestamp: string,
+ *   message: string,
+ *   changedFiles: string[],
+ *   files?: GitHistoryFile[]
+ * }} GitHistoryCommit
+ */
+
+/**
+ * @typedef {{
+ *   enabled: boolean,
+ *   backend: string,
+ *   path: string,
+ *   commits: GitHistoryCommit[],
+ *   currentHash?: string,
+ *   hasMore?: boolean,
+ *   limit?: number,
+ *   offset?: number,
+ *   total?: number | null
+ * }} GitHistoryListResult
+ */
+
+/**
+ * @typedef {{
+ *   backend: string,
+ *   hash: string,
+ *   shortHash: string,
+ *   path: string
+ * }} GitHistoryRollbackResult
+ */
+
+/**
+ * @typedef {{
+ *   backend: string,
+ *   file: GitHistoryFile,
+ *   hash: string,
+ *   patch: string,
+ *   path: string,
+ *   shortHash: string
+ * }} GitHistoryDiffResult
+ */
+
+/**
+ * @typedef {{
+ *   backend: string,
+ *   hash: string,
+ *   path: string,
+ *   revertedHash: string,
+ *   shortHash: string
+ * }} GitHistoryRevertResult
  */
 
 /**
@@ -350,6 +424,33 @@ function createFileInfoRequest(pathOrOptions) {
   };
 }
 
+function createFileListRequest(pathOrOptions, recursive = false) {
+  const input = isPlainObject(pathOrOptions)
+    ? pathOrOptions
+    : {
+        path: pathOrOptions,
+        recursive
+      };
+  const request = {
+    path: input.path,
+    recursive: input.recursive ?? recursive
+  };
+
+  if (input.access !== undefined) {
+    request.access = input.access;
+  }
+
+  if (input.gitRepositories !== undefined) {
+    request.gitRepositories = Boolean(input.gitRepositories);
+  }
+
+  if (input.writableOnly !== undefined) {
+    request.writableOnly = Boolean(input.writableOnly);
+  }
+
+  return request;
+}
+
 function createFolderDownloadQuery(pathOrOptions) {
   if (isPlainObject(pathOrOptions) && typeof pathOrOptions.path === "string") {
     return {
@@ -359,6 +460,96 @@ function createFolderDownloadQuery(pathOrOptions) {
 
   return {
     path: pathOrOptions
+  };
+}
+
+function createGitHistoryListRequest(pathOrOptions, limit) {
+  if (isPlainObject(pathOrOptions)) {
+    return {
+      method: "POST",
+      body: {
+        fileFilter: pathOrOptions.fileFilter ?? pathOrOptions.filter ?? "",
+        limit: pathOrOptions.limit ?? limit,
+        offset: pathOrOptions.offset ?? 0,
+        path: pathOrOptions.path ?? "~"
+      }
+    };
+  }
+
+  return {
+    method: "GET",
+    query: {
+      fileFilter: "",
+      limit,
+      offset: 0,
+      path: pathOrOptions || "~"
+    }
+  };
+}
+
+function createGitHistoryRollbackRequest(pathOrOptions, commitHash) {
+  if (isPlainObject(pathOrOptions)) {
+    return {
+      method: "POST",
+      body: {
+        commitHash: pathOrOptions.commitHash || pathOrOptions.commit || pathOrOptions.hash,
+        path: pathOrOptions.path || "~"
+      }
+    };
+  }
+
+  return {
+    method: "POST",
+    body: {
+      commitHash,
+      path: pathOrOptions || "~"
+    }
+  };
+}
+
+function createGitHistoryDiffRequest(pathOrOptions, commitHash, filePath) {
+  if (isPlainObject(pathOrOptions)) {
+    return {
+      method: "POST",
+      body: {
+        commitHash: pathOrOptions.commitHash || pathOrOptions.commit || pathOrOptions.hash,
+        filePath: pathOrOptions.filePath || pathOrOptions.file || pathOrOptions.pathWithinCommit,
+        path: pathOrOptions.path || "~"
+      }
+    };
+  }
+
+  return {
+    method: "POST",
+    body: {
+      commitHash,
+      filePath,
+      path: pathOrOptions || "~"
+    }
+  };
+}
+
+function createGitHistoryPreviewRequest(pathOrOptions, commitHash, operation = "travel", filePath = "") {
+  if (isPlainObject(pathOrOptions)) {
+    return {
+      method: "POST",
+      body: {
+        commitHash: pathOrOptions.commitHash || pathOrOptions.commit || pathOrOptions.hash,
+        filePath: pathOrOptions.filePath || pathOrOptions.file || pathOrOptions.pathWithinCommit,
+        operation: pathOrOptions.operation || operation,
+        path: pathOrOptions.path || "~"
+      }
+    };
+  }
+
+  return {
+    method: "POST",
+    body: {
+      commitHash,
+      filePath,
+      operation,
+      path: pathOrOptions || "~"
+    }
   };
 }
 
@@ -491,18 +682,18 @@ export function createApiClient(options = {}) {
    * List authenticated app paths.
    * `fileList()` accepts app-rooted paths such as `L2/alice/` and the
    * `~` or `~/...` shorthand for the current user's `L2/<username>/...` path.
+   * Pass `{ access: "write" }` to list only writable paths, and
+   * `{ gitRepositories: true, access: "write" }` to list writable local-history
+   * repository owner roots without exposing their `.git` metadata.
    *
-   * @param {string} path
+   * @param {string | FileListOptions} path
    * @param {boolean} [recursive]
    * @returns {Promise<FileApiResult>}
    */
   async function fileList(path, recursive = false) {
     return call("file_list", {
       method: "GET",
-      query: {
-        path,
-        recursive
-      }
+      query: createFileListRequest(path, recursive)
     });
   }
 
@@ -533,6 +724,66 @@ export function createApiClient(options = {}) {
   }
 
   /**
+   * List local Git history commits for a writable L1 group or L2 user root.
+   * The backend enforces read or write access for the target owner folder.
+   *
+   * @param {string | { path?: string, limit?: number }} pathOrOptions
+   * @param {number} [limit]
+   * @returns {Promise<GitHistoryListResult>}
+   */
+  async function gitHistoryList(pathOrOptions = "~", limit = 50) {
+    return call("git_history_list", createGitHistoryListRequest(pathOrOptions, limit));
+  }
+
+  /**
+   * Read the patch for one file in a local-history commit.
+   *
+   * @param {string | { path?: string, commitHash?: string, commit?: string, hash?: string, filePath?: string, file?: string, pathWithinCommit?: string }} pathOrOptions
+   * @param {string} [commitHash]
+   * @param {string} [filePath]
+   * @returns {Promise<GitHistoryDiffResult>}
+   */
+  async function gitHistoryDiff(pathOrOptions = "~", commitHash = "", filePath = "") {
+    return call("git_history_diff", createGitHistoryDiffRequest(pathOrOptions, commitHash, filePath));
+  }
+
+  /**
+   * Preview the files and optional patch for a travel or revert history operation.
+   *
+   * @param {string | { path?: string, commitHash?: string, commit?: string, hash?: string, operation?: string, filePath?: string, file?: string, pathWithinCommit?: string }} pathOrOptions
+   * @param {string} [commitHash]
+   * @param {string} [operation]
+   * @param {string} [filePath]
+   * @returns {Promise<GitHistoryPreviewResult>}
+   */
+  async function gitHistoryPreview(pathOrOptions = "~", commitHash = "", operation = "travel", filePath = "") {
+    return call("git_history_preview", createGitHistoryPreviewRequest(pathOrOptions, commitHash, operation, filePath));
+  }
+
+  /**
+   * Roll back a writable L1 group or L2 user root to an existing local-history commit.
+   * The backend performs the reset and suppresses history scheduling for the rollback itself.
+   *
+   * @param {string | { path?: string, commitHash?: string, commit?: string, hash?: string }} pathOrOptions
+   * @param {string} [commitHash]
+   * @returns {Promise<GitHistoryRollbackResult>}
+   */
+  async function gitHistoryRollback(pathOrOptions = "~", commitHash = "") {
+    return call("git_history_rollback", createGitHistoryRollbackRequest(pathOrOptions, commitHash));
+  }
+
+  /**
+   * Revert one local-history commit by creating a new commit with the inverse changes.
+   *
+   * @param {string | { path?: string, commitHash?: string, commit?: string, hash?: string }} pathOrOptions
+   * @param {string} [commitHash]
+   * @returns {Promise<GitHistoryRevertResult>}
+   */
+  async function gitHistoryRevert(pathOrOptions = "~", commitHash = "") {
+    return call("git_history_revert", createGitHistoryRollbackRequest(pathOrOptions, commitHash));
+  }
+
+  /**
    * Return the authenticated user's derived profile snapshot from the backend.
    *
    * @returns {Promise<UserSelfInfoResult>}
@@ -553,6 +804,11 @@ export function createApiClient(options = {}) {
     fileRead,
     fileWrite,
     folderDownloadUrl,
+    gitHistoryDiff,
+    gitHistoryList,
+    gitHistoryPreview,
+    gitHistoryRollback,
+    gitHistoryRevert,
     health,
     userSelfInfo
   };

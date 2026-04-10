@@ -36,6 +36,7 @@ Child doc section pattern:
 This scope owns:
 
 - repo-level test harnesses under `tests/`
+- `customware_git_history_test.mjs`: focused server-side harness for optional writable-layer Git history, adaptive debounce rules, repository discovery, pagination, nested filename filters with full file metadata, diff reads, operation previews, revert, ignore rules, and rollback or forward-travel preservation
 - standalone repo-level verification scripts such as `yaml_lite_test.mjs`
 - shared expectations for test config, fixtures, scripted execution, and saved evaluation results
 

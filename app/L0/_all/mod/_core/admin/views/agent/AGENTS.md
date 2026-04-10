@@ -14,8 +14,7 @@ This surface owns:
 
 - `panel.html`: mounted admin agent UI
 - `store.js`: main state, send loop, compaction flow, dialog control, and persistence orchestration
-- `api.js`, `prompt.js`, `execution.js`, `attachments.js`, `llm-params.js`, `view.js`, `local-runtime.js`, `webllm.js`, and `huggingface.js`: local runtime helpers
-- `webllm-worker.js`: admin-local WebLLM worker
+- `api.js`, `prompt.js`, `execution.js`, `attachments.js`, `llm-params.js`, `view.js`, and `huggingface.js`: admin runtime helpers
 - `config.js` and `storage.js`: persisted settings and history contract
 - `system-prompt.md`, `compact-prompt.md`, and `compact-prompt-auto.md`: firmware prompt files
 - `skills.js`: admin skill catalog building and `space.admin.loadSkill(...)`
@@ -36,7 +35,6 @@ Current stored config fields are written in YAML as:
 - `model`
 - `params`
 - `max_tokens`
-- `webllm_model`
 - `huggingface_model`
 - `huggingface_dtype`
 - optional `custom_system_prompt`
@@ -65,30 +63,26 @@ Prompt rules:
 
 Current behavior:
 
-- the LLM settings modal keeps one provider switch at the top and shows either the API settings fields or one `Local` section
-- the `Local` section keeps a second selector between `HuggingFace ONNX` and `WebLLM`, defaulting to HuggingFace for new drafts
-- the toolbar LLM settings button summarizes the current selection with the configured model name only; it does not prepend provider labels such as `API`, `Local`, `WebLLM`, or `HuggingFace ONNX`
-- each local provider mounts its own standalone config sidebar component from the owning test module through `<x-component>`, so the admin modal and the routed testing harness share the same component file instead of maintaining duplicated local-provider markup
-- the admin WebLLM panel should list the full prebuilt catalog, label cached entries clearly, and let users download or load or unload the selected model directly from the modal while reusing the same progress block and current-model status area as the routed sidebar
+- the LLM settings modal keeps one provider switch at the top with tabs named `API` and `Local`, and shows either the API settings fields or one `Local` section
+- the `Local` section only supports the Hugging Face browser runtime
+- the toolbar LLM settings button summarizes the current selection with the configured model name only; it does not prepend provider labels such as `API`, `Local`, or `Hugging Face`
+- the local section mounts the standalone Hugging Face config sidebar component through `<x-component>`, so the admin modal and the routed testing harness share the same component file instead of maintaining duplicated local-provider markup
 - the admin HuggingFace panel should let users either enter a compatible repo id directly or pick from the shared saved-model list, then load or unload that selection directly from the modal while reusing the same progress block and current-model status area as the routed sidebar
-- both admin local-provider panels should show the selected model separately from the currently loaded model, so an unloaded but configured selection is visible immediately instead of looking stuck on `None loaded`
+- the admin local-provider panel should show the selected model separately from the currently loaded model, so an unloaded but configured selection is visible immediately instead of looking stuck on `None loaded`
+- when no Hugging Face model is selected, no model is loaded, and the shared saved-model list is empty, the admin local-provider panel should prefill the model field with the same default used by the routed testing page: `onnx-community/gemma-4-E4B-it-ONNX`
 - admin-local provider inputs mounted through the shared sidebar components should write back through explicit `store.js` setter methods instead of depending on implicit nested `x-model` mutation across component boundaries
 - discarding a HuggingFace repo from the routed testing harness removes it from the shared browser-side saved-model list too, so it disappears from the admin saved-model shortcut selector until it is loaded again
 - admin should subscribe to `_core/huggingface/manager.js` directly, so the modal and send flow read the same live worker state, saved-model options, loading, and streaming behavior as the routed Hugging Face surface within the current browser context
-- admin should not eagerly boot both local runtimes during page init or settings-dialog open; it should only boot the configured local provider, auto-load that configured model in the background when local mode is already saved for the page, and must not auto-load a local model merely because the modal was opened
+- admin should not auto-load a local model merely because the modal was opened; it may read or refresh saved Hugging Face model shortcuts without booting the worker
 - the admin HuggingFace current-model badge should mirror the routed page's load phases, including `Downloading` during file transfer and `Loading` during post-download runtime preparation, rather than collapsing every in-flight phase into one generic label
 - the admin HuggingFace status badge and status copy must treat the shared manager's explicit boot flag as the only `Starting` signal; an idle manager with no active load should read as `Idle` even before the worker has been booted in this page
 - when the admin agent is about to send through a local provider and the configured local model is not ready yet, the main status line should read `Loading local LLM...`; only once text deltas start arriving should it switch to `Streaming response...`
-- before admin loads or sends through one local provider, it should release the inactive local provider runtime so WebLLM and HuggingFace do not keep competing for browser-side GPU resources in the same admin page
 - local-provider sends should use a compact admin execution prompt profile instead of the full firmware prompt plus admin-skills catalog, because browser-local models should share the routed worker/runtime path without carrying the much heavier API-mode prompt budget
 - save should persist the selected local model config even when the model is not loaded yet; saving local settings should also start background load or download for the configured model, while the first admin send still acts as the fallback load trigger if that preparation has not finished yet
-- both local provider sections expose a button that opens the full testing chat route in a new tab for fuller inspection or experimentation, but that route is no longer the only place where local model preparation can happen
-- the settings modal keeps `maxTokens` and `paramsText` as shared controls below the provider-specific sections so remote API, local HuggingFace, and local WebLLM all use the same compaction threshold and request-params surface
-- `local-runtime.js` owns the superclass for browser-local LLM streaming; `webllm.js` is its worker-backed subclass, while Hugging Face local chat should call `_core/huggingface/manager.js` directly instead of adding a second admin-side transport path
-- `local-runtime.js` snapshot cloning must stay plain-data and clone-safe; do not reintroduce generic `structuredClone(...)` fallbacks that can explode on browser host objects or reactive proxies
-- the admin agent keeps one shared prompt assembly or compaction or execution loop and branches only at the final LLM transport call between API fetch streaming and the unified browser-local runtime interface
+- the local provider section exposes a button that opens the full Hugging Face testing chat route in a new tab for fuller inspection or experimentation, but that route is no longer the only place where local model preparation can happen
+- the settings modal keeps `maxTokens` and `paramsText` as shared controls below the provider-specific sections so remote API and local HuggingFace use the same compaction threshold and request-params surface
+- the admin agent keeps one shared prompt assembly or compaction or execution loop and branches only at the final LLM transport call between API fetch streaming and the Hugging Face manager
 - `llm-params.js` delegates YAML parsing to the shared framework `js/yaml-lite.js` utility but still enforces the admin-agent-specific top-level `key: value` params contract
-- `webllm.js` is the admin-local WebLLM subclass and `webllm-worker.js` is the admin-local worker; keep admin-side WebLLM orchestration here rather than depending on routed test-surface UI state
 - `huggingface.js` should stay limited to admin-facing snapshot shaping or helper glue around `_core/huggingface/manager.js`; do not reintroduce a second admin-side Hugging Face transport path when the shared manager already owns load or unload or stream behavior
 - browser execution blocks are detected by the `_____javascript` separator
 - `execution.js` runs browser-side JavaScript in an async wrapper and formats console output and result values for the thread
@@ -96,6 +90,7 @@ Current behavior:
 - empty-response protocol-correction messages must not re-echo the prior execution output; they should tell the agent to continue from the execution output above or provide the user-facing answer
 - loaded admin skills are passed through execution as typed runtime values, not pasted blindly into the prompt
 - the surface uses the shared visual dialog helpers and shared thread renderer from `_core/visual`
+- `agent.css` may customize shared visual button primitives only under `.admin-agent-root`; the admin shell mounts tab components together, so unscoped `.secondary-button`, `.primary-button`, or `.confirm-button` rules leak into other admin surfaces such as the shared Files explorer
 - `view.js` enables the shared marked-backed chat-bubble markdown renderer so settled admin chat bubbles render markdown consistently with the onscreen agent
 - `store.js` publishes the active admin thread snapshot at `space.chat`, including `messages` and live `attachments` helpers for the current surface
 - assistant streaming is patched into the existing DOM at animation-frame cadence instead of full-thread rerenders

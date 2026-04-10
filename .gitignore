@@ -18,3 +18,5 @@ server/tmp/*
 !server/data/
 server/data/*
 !server/data/.gitignore
+csr.csr
+key.pem

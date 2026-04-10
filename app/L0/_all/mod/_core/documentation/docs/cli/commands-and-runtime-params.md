@@ -45,7 +45,23 @@ Runtime-state commands:
 - `user`
 - `group`
 
+`node space user create` can add the new user to groups in the same command with `--groups <group[,group...]>`. The group list is comma-separated, normalized, de-duplicated, and written through the same `L1` group helper used by `node space group add`.
+
+`node space group add` creates the target writable `L1` group if it does not already exist, including predefined runtime group ids such as `_admin`.
+
 The command tree prefers a small number of readable top-level commands with explicit subcommands instead of many tiny files.
+
+## `update`
+
+`node space update` updates a source checkout from the canonical Space Agent repository.
+
+Current behavior:
+
+- before fetching, it pins `origin` to `https://github.com/agent0ai/space-agent.git`
+- with no target, it fast-forwards the current or recoverable branch from `origin`
+- with `--branch <branch>` or a branch positional target, it reattaches and updates that branch
+- with a tag or commit target, it moves the current or recovered branch to that exact revision when possible
+- it remains source-checkout only and does not update packaged Electron apps
 
 ## `serve`
 
@@ -75,6 +91,7 @@ Current params:
 - `CUSTOMWARE_PATH`
 - `SINGLE_USER_APP`
 - `ALLOW_GUEST_USERS`
+- `CUSTOMWARE_GIT_HISTORY`
 
 Important fields per param:
 
@@ -92,6 +109,9 @@ Only params with `frontend_exposed: true` are injected into page-shell meta tags
 - `PORT`: accepts `0` when a caller wants the OS to assign a free local port at startup
 - `SINGLE_USER_APP`: implicit always-authenticated `user` principal with virtual `_admin` access
 - `ALLOW_GUEST_USERS`: enables guest creation from the login screen when password login is enabled
+- `CUSTOMWARE_GIT_HISTORY`: enables optional debounced local Git history repositories for writable `L1/<group>/` and `L2/<user>/` roots; defaults to `false`; owner-root commits wait 10 seconds of quiet, then shorten to 5 seconds after 1 minute of pending writes, 1 second after 5 minutes, and immediate commit after 10 minutes
+- `user` and `group` commands flush pending local-history commits before returning when `CUSTOMWARE_GIT_HISTORY` is enabled because those commands are short-lived processes
+- `node space set CUSTOMWARE_PATH <path>` should be run before creating users or groups when writable state should live outside the source checkout, because `user` and `group` commands resolve that stored parameter before deciding where `L1` and `L2` files belong
 
 ## Practical Reading Order
 

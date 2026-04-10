@@ -2,12 +2,19 @@ import {
   COMMIT_HASH_PATTERN,
   createAvailableBackendResult,
   createUnavailableBackendResult,
+  filterHistoryChangedFiles,
+  filterHistoryFileEntries,
+  getHistoryChangedFilePaths,
+  isHistoryIgnoredPath,
   isSshLikeRemoteUrl,
+  normalizeHistoryIgnoredPaths,
   normalizeBranchName,
   resolveGitAuth,
   sanitizeRemoteUrl,
   shortenOid
 } from "./shared.js";
+import fs from "node:fs";
+import path from "node:path";
 
 function readNodeGitText(value) {
   if (value == null) {
@@ -65,6 +72,28 @@ function oidToString(oid) {
   return String(oid);
 }
 
+function isInternalGitPath(filePath) {
+  return String(filePath || "").split(/[\\/]+/u).includes(".git");
+}
+
+function readStatusPath(entry) {
+  if (typeof entry?.path === "function") {
+    return entry.path();
+  }
+
+  return String(entry?.path || "");
+}
+
+async function openOrInitNodeGitRepository(NodeGit, repoRoot) {
+  fs.mkdirSync(repoRoot, { recursive: true });
+
+  try {
+    return await NodeGit.Repository.open(repoRoot);
+  } catch {
+    return NodeGit.Repository.init(repoRoot, 0);
+  }
+}
+
 function checkoutOptions(NodeGit) {
   return {
     checkoutStrategy: NodeGit.Checkout?.STRATEGY?.FORCE
@@ -77,6 +106,100 @@ function readStatusValue(entry) {
   }
 
   return entry?.status || 0;
+}
+
+async function stageNodeGitStatusEntries(repo, NodeGit, ignoredPaths = []) {
+  const index = await repo.refreshIndex();
+  const statusEntries = await repo.getStatus();
+  const statusFlags = NodeGit.Status?.STATUS || {};
+  const ignoredPathSet = normalizeHistoryIgnoredPaths(ignoredPaths);
+  const changedFiles = [];
+
+  for (const ignoredPath of ignoredPathSet) {
+    try {
+      await index.removeByPath(ignoredPath);
+      changedFiles.push(ignoredPath);
+    } catch {
+      // Already untracked or absent. Future status handling skips ignored paths.
+    }
+  }
+
+  for (const entry of statusEntries) {
+    const filePath = readStatusPath(entry);
+    if (!filePath || isInternalGitPath(filePath) || isHistoryIgnoredPath(filePath, ignoredPathSet)) {
+      continue;
+    }
+
+    changedFiles.push(filePath);
+    const value = readStatusValue(entry);
+    const deleted =
+      (value & (statusFlags.WT_DELETED || 0)) !== 0 ||
+      (value & (statusFlags.INDEX_DELETED || 0)) !== 0;
+
+    if (deleted) {
+      await index.removeByPath(filePath);
+    } else {
+      await index.addByPath(filePath);
+    }
+  }
+
+  await index.write();
+
+  return {
+    changedFiles: [...new Set(changedFiles)].sort((left, right) => left.localeCompare(right)),
+    treeOid: await index.writeTree()
+  };
+}
+
+async function tryReadNodeGitHeadCommit(repo) {
+  try {
+    return await repo.getHeadCommit();
+  } catch {
+    return null;
+  }
+}
+
+function readNodeGitCommitTimestamp(commit) {
+  if (typeof commit?.date === "function") {
+    return commit.date().toISOString();
+  }
+
+  return "";
+}
+
+function readNodeGitCommitMessage(commit) {
+  if (typeof commit?.summary === "function") {
+    return commit.summary();
+  }
+
+  if (typeof commit?.message === "function") {
+    return String(commit.message() || "").split("\n")[0];
+  }
+
+  return "";
+}
+
+async function readNodeGitCommitChangedFiles(commit) {
+  const files = new Set();
+  const diffs = typeof commit?.getDiff === "function" ? await commit.getDiff() : [];
+
+  for (const diff of diffs) {
+    const patches = typeof diff?.patches === "function" ? await diff.patches() : [];
+
+    for (const patch of patches) {
+      const newFile = typeof patch?.newFile === "function" ? patch.newFile() : null;
+      const oldFile = typeof patch?.oldFile === "function" ? patch.oldFile() : null;
+      const newPath = typeof newFile?.path === "function" ? newFile.path() : "";
+      const oldPath = typeof oldFile?.path === "function" ? oldFile.path() : "";
+      const filePath = newPath && newPath !== "/dev/null" ? newPath : oldPath;
+
+      if (filePath && filePath !== "/dev/null" && !isInternalGitPath(filePath)) {
+        files.add(filePath);
+      }
+    }
+  }
+
+  return [...files].sort((left, right) => left.localeCompare(right));
 }
 
 function createFetchOptions(NodeGit, remoteUrl, authOptions = {}) {
@@ -349,6 +472,165 @@ export async function createNodeGitCloneClient() {
       await NodeGit.Clone.clone(sanitizeRemoteUrl(remoteUrl), targetDir, {
         fetchOpts: createFetchOptions(NodeGit, remoteUrl, authOptions)
       });
+    }
+  };
+
+  return createAvailableBackendResult("nodegit", client);
+}
+
+export async function createNodeGitHistoryClient({ repoRoot }) {
+  let NodeGit;
+  try {
+    const nodeGitModule = await import("nodegit");
+    NodeGit = nodeGitModule.default || nodeGitModule;
+  } catch {
+    return createUnavailableBackendResult("nodegit", "the optional nodegit package is not installed or not loadable");
+  }
+
+  const resolvedRepoRoot = path.resolve(String(repoRoot || ""));
+  let repo;
+
+  try {
+    repo = await openOrInitNodeGitRepository(NodeGit, resolvedRepoRoot);
+  } catch (error) {
+    return createUnavailableBackendResult("nodegit", error.message);
+  }
+
+  const client = {
+    name: "nodegit",
+    label: "NodeGit backend",
+
+    async ensureRepository() {
+      repo = await openOrInitNodeGitRepository(NodeGit, resolvedRepoRoot);
+    },
+
+    async commitAll(options = {}) {
+      await this.ensureRepository();
+
+      const ignoredPaths = [...normalizeHistoryIgnoredPaths(options.ignoredPaths)];
+      const { changedFiles: stagedFiles, treeOid } = await stageNodeGitStatusEntries(repo, NodeGit, ignoredPaths);
+      const changedFiles = filterHistoryChangedFiles(stagedFiles, ignoredPaths);
+      const parentCommit = await tryReadNodeGitHeadCommit(repo);
+      const parentTreeId = parentCommit && typeof parentCommit.treeId === "function"
+        ? oidToString(parentCommit.treeId())
+        : "";
+
+      if (stagedFiles.length === 0 || (parentTreeId && parentTreeId === oidToString(treeOid))) {
+        return {
+          backend: this.name,
+          changedFiles: [],
+          committed: false,
+          hash: "",
+          shortHash: ""
+        };
+      }
+
+      const author = NodeGit.Signature.now(
+        String(options.authorName || "Space Agent"),
+        String(options.authorEmail || "space-agent@local")
+      );
+      const hash = oidToString(
+        await repo.createCommit(
+          "HEAD",
+          author,
+          author,
+          String(options.message || "Update customware history"),
+          treeOid,
+          parentCommit ? [parentCommit] : []
+        )
+      );
+
+      return {
+        backend: this.name,
+        changedFiles,
+        committed: true,
+        hash,
+        shortHash: shortenOid(hash)
+      };
+    },
+
+    async listCommits(options = {}) {
+      await this.ensureRepository();
+
+      const headCommit = await tryReadNodeGitHeadCommit(repo);
+      if (!headCommit) {
+        return {
+          commits: [],
+          currentHash: "",
+          hasMore: false,
+          limit: Math.max(1, Math.min(500, Number(options.limit) || 50)),
+          offset: Math.max(0, Number(options.offset) || 0),
+          total: 0
+        };
+      }
+
+      const limit = Math.max(1, Math.min(500, Number(options.limit) || 50));
+      const offset = Math.max(0, Number(options.offset) || 0);
+      const revWalk = repo.createRevWalk();
+      revWalk.pushHead();
+      if (NodeGit.Revwalk?.SORT?.TIME !== undefined) {
+        revWalk.sorting(NodeGit.Revwalk.SORT.TIME);
+      }
+
+      const commits = await revWalk.getCommits(limit + offset + 1);
+      const pageCommits = commits.slice(offset, offset + limit + 1);
+      const fileFilter = String(options.fileFilter || "").trim().toLowerCase();
+
+      const entries = await Promise.all(
+        pageCommits.map(async (commit) => {
+          const hash = oidToString(commit.id());
+          const files = filterHistoryFileEntries(
+            await readNodeGitCommitChangedFiles(commit),
+            options.ignoredPaths
+          );
+
+          return {
+            changedFiles: getHistoryChangedFilePaths(files),
+            files,
+            hash,
+            message: readNodeGitCommitMessage(commit),
+            shortHash: shortenOid(hash),
+            timestamp: readNodeGitCommitTimestamp(commit)
+          };
+        })
+      );
+      const filteredEntries = fileFilter
+        ? entries.filter((entry) => entry.changedFiles.some((filePath) => filePath.toLowerCase().includes(fileFilter)))
+        : entries;
+
+      return {
+        commits: filteredEntries.slice(0, limit),
+        currentHash: oidToString(headCommit.id()),
+        hasMore: filteredEntries.length > limit || commits.length > offset + limit,
+        limit,
+        offset,
+        total: null
+      };
+    },
+
+    async getCommitDiff() {
+      throw new Error("Commit file diffs require the native Git history backend.");
+    },
+
+    async previewOperation() {
+      throw new Error("Operation previews require the native Git history backend.");
+    },
+
+    async rollbackToCommit(options = {}) {
+      await this.ensureRepository();
+      const commit = await resolveCommitObject(repo, NodeGit, String(options.commitHash || ""));
+      await NodeGit.Reset.reset(repo, commit, NodeGit.Reset.TYPE.HARD);
+      const hash = oidToString(commit.id());
+
+      return {
+        backend: this.name,
+        hash,
+        shortHash: shortenOid(hash)
+      };
+    },
+
+    async revertCommit() {
+      throw new Error("Commit revert requires the native Git history backend.");
     }
   };
 

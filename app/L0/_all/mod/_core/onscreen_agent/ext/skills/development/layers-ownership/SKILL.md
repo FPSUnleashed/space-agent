@@ -19,6 +19,8 @@ Use this skill before deciding where new files belong or how readable and writab
 - `L2/<username>/meta/` holds auth state such as password and login session records.
 - `L2/<username>/mod/` is that user's customware module root.
 - `L1/<group>/group.yaml` is the canonical group membership and management file.
+- When `CUSTOMWARE_GIT_HISTORY` is enabled, each writable `L1/<group>/` and `L2/<username>/` root may have a server-managed local Git history repository.
+- L2 history ignores `meta/password.json` and `meta/logins.json`; rollback preserves those current auth files and keeps previous heads listable for forward travel when possible, while revert creates a new inverse commit.
 
 ## Permission Model
 
@@ -54,6 +56,7 @@ Higher-ranked exact same module-relative paths override lower-ranked ones. Diffe
 - Put repo-owned first-party development work in `app/L0/_all/mod/_core/...`.
 - Use `L1` and `L2` only when the user explicitly wants layered customware or user- or group-specific overrides.
 - Do not treat repo-local `app/L1` or `app/L2` as durable framework source; they are transient runtime state and are gitignored.
+- Do not read, write, or depend on `.git` paths inside writable layer roots; they are reserved for server-managed history.
 
 ## Mandatory Doc Follow-Up
 

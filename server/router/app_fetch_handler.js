@@ -1,6 +1,7 @@
 import path from "node:path";
 
 import { createAppAccessController } from "../lib/customware/file_access.js";
+import { isReservedAppProjectPath } from "../lib/customware/git_history.js";
 import { getRuntimeGroupIndex } from "../lib/customware/group_runtime.js";
 import {
   normalizeAppProjectPath,
@@ -31,6 +32,11 @@ function handleAppFetchRequest(res, requestPath, options = {}) {
 
   if (!projectPath) {
     sendNotFound(res);
+    return;
+  }
+
+  if (isReservedAppProjectPath(projectPath)) {
+    sendJson(res, 403, { error: "Access denied" });
     return;
   }
 

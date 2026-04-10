@@ -7,6 +7,7 @@ const {
   loadPackagingDependency,
   resolvePackagingDependency
 } = require("./tooling");
+const { resolveDesktopBuildVersion } = require("./release-version");
 const PACKAGE_JSON_PATH = path.join(PROJECT_ROOT, "package.json");
 const { build, Platform, Arch, DIR_TARGET } = loadPackagingDependency("electron-builder");
 const ELECTRON_PACKAGE = loadPackagingDependency("electron/package.json");
@@ -22,6 +23,7 @@ const PLATFORM_SPECS = {
     builderPlatform: Platform.MAC,
     configKey: "mac",
     defaultTargets: ["dmg", "zip"],
+    entryScript: "macos-package.js",
     preferredHost: "darwin"
   },
   windows: {
@@ -30,6 +32,7 @@ const PLATFORM_SPECS = {
     builderPlatform: Platform.WINDOWS,
     configKey: "win",
     defaultTargets: ["nsis", "portable"],
+    entryScript: "windows-package.js",
     preferredHost: "win32"
   },
   linux: {
@@ -38,6 +41,7 @@ const PLATFORM_SPECS = {
     builderPlatform: Platform.LINUX,
     configKey: "linux",
     defaultTargets: ["AppImage", "deb", "tar.gz"],
+    entryScript: "linux-package.js",
     preferredHost: "linux"
   }
 };
@@ -51,6 +55,16 @@ const ARCH_VALUES = {
 
 function readPackageJson() {
   return JSON.parse(fs.readFileSync(PACKAGE_JSON_PATH, "utf8"));
+}
+
+function isTruthyEnv(value) {
+  return ["1", "true", "yes"].includes(String(value || "").trim().toLowerCase());
+}
+
+function applyAppleCredentialAliases(env = process.env) {
+  if (!env.APPLE_APP_SPECIFIC_PASSWORD && env.APPLE_PASSWORD) {
+    env.APPLE_APP_SPECIFIC_PASSWORD = env.APPLE_PASSWORD;
+  }
 }
 
 function isFlag(value, ...names) {
@@ -125,10 +139,10 @@ function parseArchList(rawValue, platformSpec) {
 
 function parsePackagingArgs(argv, platformSpec) {
   const options = {
+    appVersion: "",
     dir: false,
     dryRun: false,
     help: false,
-    publish: "never",
     archs: [defaultArchName(platformSpec)]
   };
 
@@ -142,6 +156,20 @@ function parsePackagingArgs(argv, platformSpec) {
 
     if (arg === "--dir") {
       options.dir = true;
+      continue;
+    }
+
+    if (arg === "--app-version") {
+      options.appVersion = readFlagValue(argv, index, "--app-version");
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--app-version=")) {
+      options.appVersion = arg.slice("--app-version=".length).trim();
+      if (!options.appVersion) {
+        throw new Error("--app-version requires a value.");
+      }
       continue;
     }
 
@@ -168,15 +196,10 @@ function parsePackagingArgs(argv, platformSpec) {
       continue;
     }
 
-    if (arg === "--publish") {
-      options.publish = readFlagValue(argv, index, "--publish");
-      index += 1;
-      continue;
-    }
-
-    if (arg.startsWith("--publish=")) {
-      options.publish = arg.slice("--publish=".length).trim() || "never";
-      continue;
+    if (arg === "--publish" || arg.startsWith("--publish=")) {
+      throw new Error(
+        "The packaging scripts do not support --publish. They only build local artifacts; GitHub Release upload is handled by .github/workflows/release-desktop.yml."
+      );
     }
 
     throw new Error(`Unknown packaging argument: ${arg}`);
@@ -206,12 +229,18 @@ function maybeStripMissingPath(object, key, warnings, description) {
   delete object[key];
 }
 
-function createBuildConfig(platformSpec) {
+function createBuildConfig(platformSpec, options) {
   const packageJson = readPackageJson();
   const buildConfig = cloneBuildConfig(packageJson);
   const platformConfig = {
     ...(buildConfig[platformSpec.configKey] || {})
   };
+  const buildVersion = resolveDesktopBuildVersion({
+    explicitValue: options.appVersion,
+    packageVersion: packageJson.version,
+    cwd: PROJECT_ROOT
+  });
+  const skipSigning = isTruthyEnv(process.env.SKIP_SIGNING);
   const warnings = [];
 
   maybeStripMissingPath(platformConfig, "icon", warnings, `${platformSpec.label} icon`);
@@ -223,17 +252,28 @@ function createBuildConfig(platformSpec) {
     `${platformSpec.label} inherited entitlements`
   );
 
+  if (skipSigning && platformSpec.key === "macos") {
+    platformConfig.identity = null;
+    platformConfig.notarize = false;
+  }
+
   buildConfig[platformSpec.configKey] = platformConfig;
   buildConfig.directories = {
     ...(buildConfig.directories || {}),
     output: path.join("dist", "desktop", platformSpec.key)
   };
   buildConfig.asar = false;
+  buildConfig.buildVersion = buildVersion;
   buildConfig.electronVersion = ELECTRON_PACKAGE.version;
   buildConfig.electronDist = ELECTRON_DIST_PATH;
+  buildConfig.extraMetadata = {
+    ...(buildConfig.extraMetadata || {}),
+    version: buildVersion
+  };
 
   return {
     buildConfig,
+    buildVersion,
     warnings
   };
 }
@@ -248,27 +288,27 @@ function printHelp(platformSpec) {
   console.log(`${platformSpec.label} packaging script`);
   console.log("");
   console.log("Usage:");
-  console.log(`  node packaging/scripts/package-${platformSpec.key}.js [options]`);
+  console.log(`  node packaging/scripts/${platformSpec.entryScript} [options]`);
   console.log("");
   console.log("Options:");
+  console.log("  --app-version <tag> Desktop app version or tag, for example v0.22 or 0.22.0.");
   console.log("  --dir              Build an unpacked app directory instead of installers.");
   console.log("  --arch <list>      Arch list: x64, arm64, universal (macOS only).");
   console.log("  --x64              Shortcut for --arch x64.");
   console.log("  --arm64            Shortcut for --arch arm64.");
   console.log("  --universal        Shortcut for --arch universal (macOS only).");
-  console.log("  --publish <mode>   electron-builder publish mode. Defaults to never.");
   console.log("  --dry-run          Print the resolved packaging plan without building.");
 }
 
-function printPlan(platformSpec, options, warnings, buildConfig) {
+function printPlan(platformSpec, options, warnings, buildConfig, buildVersion) {
   console.log(`${platformSpec.label} packaging plan`);
   console.log("");
   console.log(`Host platform: ${process.platform}`);
   console.log(`Preferred host: ${platformSpec.preferredHost}`);
+  console.log(`Build version: ${buildVersion}`);
   console.log(`Output directory: ${buildConfig.directories.output}`);
   console.log(`Targets: ${(options.dir ? [DIR_TARGET] : platformSpec.defaultTargets).join(", ")}`);
   console.log(`Archs: ${options.archs.join(", ")}`);
-  console.log(`Publish mode: ${options.publish}`);
 
   if (warnings.length) {
     console.log("");
@@ -294,17 +334,19 @@ async function runDesktopPackaging(platformKey, argv = process.argv.slice(2)) {
     throw new Error(`Unknown desktop packaging platform: ${platformKey}`);
   }
 
+  applyAppleCredentialAliases();
+
   const options = parsePackagingArgs(argv, platformSpec);
   if (options.help) {
     printHelp(platformSpec);
     return [];
   }
 
-  const { buildConfig, warnings } = createBuildConfig(platformSpec);
+  const { buildConfig, buildVersion, warnings } = createBuildConfig(platformSpec, options);
   printHostNote(platformSpec);
 
   if (options.dryRun) {
-    printPlan(platformSpec, options, warnings, buildConfig);
+    printPlan(platformSpec, options, warnings, buildConfig, buildVersion);
     return [];
   }
 
@@ -318,7 +360,7 @@ async function runDesktopPackaging(platformKey, argv = process.argv.slice(2)) {
     projectDir: PROJECT_ROOT,
     config: buildConfig,
     targets: createTargets(platformSpec, options),
-    publish: options.publish
+    publish: "never"
   });
 
   if (options.dir) {

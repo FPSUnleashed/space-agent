@@ -69,7 +69,8 @@ Current rules:
 - always available in single-user mode
 - available to authenticated multi-user requests
 - unauthenticated multi-user requests are redirected to `/login`
-- `/` and `/admin` receive a pre-module launcher guard when the current request is launcher-eligible, so new tabs route through `/enter?next=<current-url>` while reloads in the same tab keep loading normally
+- `/` and `/admin` receive a pre-module launcher guard when the current request is launcher-eligible, so browser-opened new tabs route through `/enter?next=<current-url>` while reloads in the same tab keep loading normally
+- framework-created same-origin `_blank` opens for `/` and `/admin` may pre-grant the same tab-access marker before navigation so app-requested windows skip `/enter`
 
 ## Direct App-File Fetches
 

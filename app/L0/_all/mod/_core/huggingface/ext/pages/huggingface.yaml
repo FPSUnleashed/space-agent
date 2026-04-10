@@ -1,5 +1,5 @@
-name: Hugging Face
+name: Local LLM
 path: huggingface
-description: Load Transformers.js browser models and run a compact testing chat.
+description: Load and test local LLMs with WebGPU and Hugging Face.
 icon: hub
 color: "#7de3c9"

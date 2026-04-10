@@ -51,7 +51,7 @@ This module owns:
 - `skills.js`: onscreen skill discovery, skill frontmatter metadata flags, `space.skills.load(...)`, and skill-related JS extension seams
 - `llm.js`, `api.js`, `execution.js`, `attachments.js`, and `llm-params.js`: local runtime helpers
 - `llm.js` owns LLM-facing system-prompt file loading, optional example-message construction, always-loaded skill injection into the system prompt, runtime system-prompt assembly, prompt-instance caching, separate transient-message construction, final request assembly, history-compaction prompt loading, and the model-facing JS extension seams
-- `api.js` owns chat transport, HTTP error handling, and streaming response parsing; prompt-shaping logic lives in `llm.js`
+- `api.js` owns chat transport, HTTP error handling, streaming response parsing, and the shared `OnscreenAgentLlmClient` superclass plus provider subclasses for OpenAI-compatible API streaming and local Hugging Face streaming; prompt-shaping logic lives in `llm.js`
 - `llm-params.js` delegates YAML parsing to the shared framework `js/yaml-lite.js` utility but still enforces the overlay-specific top-level `key: value` params contract
 - `config.js` and `storage.js`: persisted settings, position, optional edge-hidden pose, display mode, and history
 - `prompts/`: shipped prompt files and prompt-local documentation
@@ -67,8 +67,12 @@ Current persistence paths:
 
 Current config fields include:
 
-- provider settings and params
+- `llm_provider`
+- `local_provider`
+- API provider settings and params
 - `max_tokens`
+- `huggingface_model`
+- `huggingface_dtype`
 - optional `custom_system_prompt`
 - `agent_x`
 - `agent_y`
@@ -85,6 +89,9 @@ Legacy compatibility:
 
 Current defaults:
 
+- provider: `api`
+- local provider: `huggingface`
+- Hugging Face dtype: `q4`
 - API endpoint: `https://openrouter.ai/api/v1/chat/completions`
 - model: `openai/gpt-5.4-mini`
 - params: `temperature:0.2`
@@ -235,6 +242,13 @@ Current overlay behavior:
 - `store.js` should hold one prompt-instance object per chat surface, rebuild full prompt input when the overlay boots or the thread is reset or a new LLM turn is about to start, and reuse the cached system or examples or transient sections without recomputing the full prepared payload or token counts on every streamed delta
 - prompt-history previews and token counts are derived from the prepared outbound request payload so request-prep extensions stay visible in the context window instead of only affecting the final fetch call, but exact recomputation should happen only at stable boundaries such as request preparation, stop handling, or settled assistant completion, never on every streamed delta
 - the settings modal and prompt-history modal must both use the shared fixed-chrome dialog shell from `_core/visual/forms/dialog.css` so their header and footer rows stay static while only the settings form body or prompt-history frame scrolls
+- the settings modal keeps a provider switch with exactly two tabs named `API` and `Local`; API settings show endpoint, model, and API key fields, while local settings mount the shared `_core/huggingface/config-sidebar.html` component in `onscreen` mode
+- local provider settings are limited to the shared Hugging Face browser runtime for now; the overlay subscribes to `_core/huggingface/manager.js`, reads the same saved-model list and live worker state as the routed Local LLM page, and should not boot the worker just because the modal opened
+- when no Hugging Face model is selected, no model is loaded, and the shared saved-model list is empty, the overlay local-provider panel should prefill the model field with the same default used by the routed testing page: `onnx-community/gemma-4-E4B-it-ONNX`
+- saving local settings must persist the selected Hugging Face repo id and dtype, then start background model preparation; the first local send remains the fallback load trigger if that preparation has not finished
+- local-provider sends use the compact `LOCAL_ONSCREEN_AGENT_SYSTEM_PROMPT` profile in `llm.js` instead of the full firmware prompt plus skill catalog, while preserving custom instructions, history, transient context, execution-loop behavior, and prompt-inspection data
+- when the overlay is about to send through the local provider and the configured local model is not ready, the status should read `Loading local LLM...`; once text deltas arrive, normal streaming status and compact-bubble updates take over
+- the default API-key overlay should only block the composer for the API provider when the shipped API defaults are still selected and no API key is configured; local Hugging Face mode does not require the API-key blocker
 - the prompt-history modal must show the exact prepared message payload before the final transport-only consecutive-role fold, including example messages, any prepared `_____user` or `_____framework` blocks, and any separate trailing `_____transient` message
 - the prompt-history modal footer owns prepared-payload navigation and copy helpers: it should be implemented as one outer footer row with exactly two inner groups, one left and one right, so the three navigation buttons stay on the left edge and the four copy or close buttons stay on the right edge; it should reuse the shared compact modal button treatment from `_core/visual/forms/dialog.css` instead of reintroducing large pill-style modal controls locally, keep all footer controls on the same fixed compact button width so icon-bearing buttons do not outgrow `Close`, jump across prepared real-user `_____user` blocks rather than every user-role message, pin the targeted prepared message to the top of the history scroller on every jump, label example turns as `EXAMPLE USER` or `EXAMPLE ASSISTANT` in text mode, and copy system-only, history-only, or full prepared-payload slices using the currently selected text or JSON mode, with the history-only slice limited to actual live or compacted history entries and excluding example or transient prompt context
 - text mode may render per-message sections for scanning, but JSON mode must stay a single raw prepared-payload block that remains mouse-selectable and copyable; real-user jump controls should still land on the same prepared message indexes in both modes, using line-based scrolling for the raw JSON view
@@ -261,6 +275,7 @@ Current overlay behavior:
 - when another module needs to change overlay prompt, skill, request, or message behavior, add or consume the local JS seams here instead of reaching into private store state from outside the module
 - keep `_core/onscreen_agent` generic: do not add task-specific execution validators, helper workflows, or module-owned prompt rules here when the owning module can supply them through `ext/js/` or skills
 - keep onscreen skill discovery and runtime behavior separate from the admin agent even when copying skill content for starter coverage
+- keep overlay-local Hugging Face glue limited to snapshot shaping, settings state, and calls into the shared `_core/huggingface/manager.js`; do not fork a second Hugging Face worker or import admin-agent local-provider helpers
 - keep `ext/skills/development/` aligned with the current frontend and read-only backend contracts so the onscreen agent's development guidance does not drift
 - keep prompt-surface strings lean: prefer `id|name|description` rows, short block labels, and body-only auto-loaded skill text over verbose wrappers
 - if behavior becomes meaningfully shared with the admin agent, promote it into `_core/framework` or `_core/visual` instead of creating cross-surface dependencies

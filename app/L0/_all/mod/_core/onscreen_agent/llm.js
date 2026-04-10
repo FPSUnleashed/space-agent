@@ -18,6 +18,14 @@ export const ONSCREEN_AGENT_PREPARED_MESSAGE_BLOCK = Object.freeze({
 export const ONSCREEN_AGENT_HISTORY_COMPACT_PROMPT_PATH = "/mod/_core/onscreen_agent/prompts/compact-prompt.md";
 export const ONSCREEN_AGENT_HISTORY_AUTO_COMPACT_PROMPT_PATH =
   "/mod/_core/onscreen_agent/prompts/compact-prompt-auto.md";
+export const LOCAL_ONSCREEN_AGENT_SYSTEM_PROMPT = [
+  "You are Space Agent running in the browser overlay.",
+  "Be concise, practical, and task-focused.",
+  "When browser runtime action is needed, reply with exactly `_____javascript` on its own line, followed only by JavaScript until the end of the message.",
+  "Use top-level await directly.",
+  "Available runtime tools include `space.api`, `space.chat`, `space.onscreenAgent`, `fetch`, `window`, `document`, and `localStorage`.",
+  "After execution results return, continue the task. Do not claim you lack browser, file, or live-data access."
+].join("\n");
 
 const ONSCREEN_AGENT_PROMPT_MESSAGE_SOURCE = Object.freeze({
   EXAMPLE: "example",
@@ -78,6 +86,10 @@ function normalizePromptSections(sections) {
   return sections
     .map((section) => normalizeSystemPrompt(section))
     .filter(Boolean);
+}
+
+function shouldUseLocalPromptProfile(context = {}) {
+  return context.localProfile === true || context.options?.localProfile === true;
 }
 
 async function loadPromptFile(promptPath, promptLabel) {
@@ -465,6 +477,20 @@ export function extractCustomOnscreenAgentSystemPrompt(storedPrompt = "", defaul
 export const buildOnscreenAgentSystemPromptSections = globalThis.space.extend(
   import.meta,
   async function buildOnscreenAgentSystemPromptSections(context = {}) {
+    if (shouldUseLocalPromptProfile(context)) {
+      const customPrompt = formatCustomUserInstructions(context.systemPrompt);
+
+      return {
+        ...context,
+        automaticallyLoadedSkillsSection: "",
+        basePrompt: LOCAL_ONSCREEN_AGENT_SYSTEM_PROMPT,
+        customPrompt,
+        localProfile: true,
+        sections: [LOCAL_ONSCREEN_AGENT_SYSTEM_PROMPT, customPrompt].filter(Boolean),
+        skillsSection: ""
+      };
+    }
+
     const basePrompt = normalizeSystemPrompt(
       context.defaultSystemPrompt || (await fetchDefaultOnscreenAgentSystemPrompt())
     );
@@ -641,6 +667,7 @@ class OnscreenAgentPromptInstance {
       defaultSystemPrompt: options.defaultSystemPrompt,
       exampleMessages: Array.isArray(options.exampleMessages) ? options.exampleMessages : [],
       historyMessages: Array.isArray(historyMessages) ? historyMessages : [],
+      options: options.options && typeof options.options === "object" ? { ...options.options } : {},
       systemPrompt: typeof options.systemPrompt === "string" ? options.systemPrompt : "",
       transientSections: Array.isArray(options.transientSections) ? options.transientSections : []
     };
@@ -654,6 +681,7 @@ class OnscreenAgentPromptInstance {
       ...this.context,
       ...context,
       historyMessages: Array.isArray(historyMessages) ? historyMessages : this.context.historyMessages,
+      options: context.options && typeof context.options === "object" ? { ...context.options } : this.context.options,
       transientSections: Array.isArray(context.transientSections)
         ? context.transientSections
         : this.context.transientSections
@@ -754,6 +782,7 @@ export const prepareOnscreenAgentCompletionRequest = globalThis.space.extend(
   async function prepareOnscreenAgentCompletionRequest({
     defaultSystemPrompt,
     messages,
+    options,
     promptInput,
     promptInstance,
     settings,
@@ -769,6 +798,7 @@ export const prepareOnscreenAgentCompletionRequest = globalThis.space.extend(
           ? await promptInstance.build({
               defaultSystemPrompt,
               historyMessages: messages,
+              options,
               systemPrompt,
               transientSections
             })
@@ -776,6 +806,7 @@ export const prepareOnscreenAgentCompletionRequest = globalThis.space.extend(
               defaultSystemPrompt,
               historyMessages: messages,
               messages,
+              options,
               systemPrompt,
               transientSections
             });

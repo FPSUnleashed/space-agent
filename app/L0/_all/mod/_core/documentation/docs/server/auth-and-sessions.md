@@ -23,6 +23,7 @@ On disk:
 
 - defaults under repo `app/L2/...`
 - relocates under `CUSTOMWARE_PATH/L2/...` when configured
+- when `CUSTOMWARE_GIT_HISTORY` is enabled, the L2 history repo ignores `meta/password.json` and `meta/logins.json`, and rollback preserves those current files instead of restoring old auth state
 
 Backend-only auth keys are not stored in the logical app tree.
 

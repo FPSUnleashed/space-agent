@@ -61,6 +61,133 @@ export function shortenOid(oid) {
   return String(oid || "").slice(0, 7);
 }
 
+export function normalizeGitRelativePath(value) {
+  return String(value || "")
+    .trim()
+    .replace(/\\/gu, "/")
+    .replace(/^\/+/u, "")
+    .replace(/^\.\//u, "");
+}
+
+export function normalizeHistoryIgnoredPaths(ignoredPaths = []) {
+  return new Set(
+    (Array.isArray(ignoredPaths) ? ignoredPaths : [])
+      .map((entry) => normalizeGitRelativePath(entry))
+      .filter(Boolean)
+  );
+}
+
+export function isHistoryIgnoredPath(filePath, ignoredPaths) {
+  return ignoredPaths.has(normalizeGitRelativePath(filePath));
+}
+
+export function filterHistoryChangedFiles(files = [], ignoredPaths = []) {
+  const ignoredPathSet = normalizeHistoryIgnoredPaths(ignoredPaths);
+
+  return files.filter((filePath) => !isHistoryIgnoredPath(filePath, ignoredPathSet));
+}
+
+export function normalizeHistoryFileAction(status = "") {
+  const value = String(status || "").trim().toUpperCase();
+
+  if (value.startsWith("A")) {
+    return "added";
+  }
+
+  if (value.startsWith("D")) {
+    return "deleted";
+  }
+
+  return "modified";
+}
+
+export function normalizeHistoryFileEntry(entry) {
+  if (typeof entry === "string") {
+    const pathValue = normalizeGitRelativePath(entry);
+
+    return pathValue
+      ? {
+          action: "modified",
+          path: pathValue,
+          status: "M"
+        }
+      : null;
+  }
+
+  if (!entry || typeof entry !== "object") {
+    return null;
+  }
+
+  const pathValue = normalizeGitRelativePath(entry.path || entry.filePath || entry.newPath);
+  const oldPath = normalizeGitRelativePath(entry.oldPath || "");
+  const status = String(entry.status || "").trim().toUpperCase() || "M";
+
+  if (!pathValue) {
+    return null;
+  }
+
+  return {
+    action: normalizeHistoryFileAction(status),
+    oldPath,
+    path: pathValue,
+    status
+  };
+}
+
+export function normalizeHistoryFileEntries(files = []) {
+  const entriesByPath = new Map();
+
+  for (const file of Array.isArray(files) ? files : []) {
+    const entry = normalizeHistoryFileEntry(file);
+
+    if (entry) {
+      entriesByPath.set(entry.path, entry);
+    }
+  }
+
+  return [...entriesByPath.values()].sort((left, right) => left.path.localeCompare(right.path));
+}
+
+export function filterHistoryFileEntries(files = [], ignoredPaths = []) {
+  const ignoredPathSet = normalizeHistoryIgnoredPaths(ignoredPaths);
+
+  return normalizeHistoryFileEntries(files).filter((entry) => !isHistoryIgnoredPath(entry.path, ignoredPathSet));
+}
+
+export function getHistoryChangedFilePaths(files = []) {
+  return normalizeHistoryFileEntries(files).map((entry) => entry.path);
+}
+
+export function normalizeHistoryFileFilter(value = "") {
+  const filterValue = normalizeGitRelativePath(value);
+
+  if (!filterValue) {
+    return "";
+  }
+
+  if (/[*?[\]]/u.test(filterValue)) {
+    return filterValue;
+  }
+
+  return `*${filterValue}*`;
+}
+
+export function buildHistoryFilterPathspecs(value = "") {
+  const filterValue = normalizeHistoryFileFilter(value);
+
+  if (!filterValue) {
+    return [];
+  }
+
+  const pathspecs = new Set([`:(glob)${filterValue}`]);
+
+  if (!filterValue.includes("/")) {
+    pathspecs.add(`:(glob)**/${filterValue}`);
+  }
+
+  return [...pathspecs];
+}
+
 export async function resolveGitContext(projectRoot) {
   const dotGitPath = path.join(projectRoot, ".git");
 

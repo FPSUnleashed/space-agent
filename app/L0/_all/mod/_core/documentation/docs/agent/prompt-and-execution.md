@@ -70,6 +70,19 @@ Important execution rules:
 - only after that retry does it emit a generic protocol-correction user message
 - no-result execution output is informational only and should not trigger a synthetic correction message by itself
 
+## LLM Transport
+
+`api.js` owns the final provider call after `llm.js` has built the prepared prompt input.
+
+The transport layer uses one `OnscreenAgentLlmClient` superclass with provider subclasses:
+
+- `OnscreenAgentApiLlmClient` sends the prepared request to an OpenAI-compatible chat-completions endpoint and normalizes standard JSON or SSE streams into text deltas plus completion metadata
+- `OnscreenAgentLocalLlmClient` sends the prepared message payload through the shared `_core/huggingface/manager.js` browser runtime, using the configured Hugging Face repo id and dtype
+
+When `llm_provider` is `local`, `llm.js` builds the system section from `LOCAL_ONSCREEN_AGENT_SYSTEM_PROMPT` plus custom instructions instead of the full firmware prompt and skill catalog. The same prepared-prompt machinery still carries examples when present, live history, compacted history, and transient context.
+
+The store and retry loop consume both providers through the same `streamOnscreenAgentCompletion(...)` seam. Provider-specific behavior should stay behind those client classes unless it affects prompt construction, which belongs in `llm.js`.
+
 ## Prompt Extension Seams
 
 Feature modules should extend the agent through owner-module seams, not by patching the base prompt blindly.

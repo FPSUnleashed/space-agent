@@ -37,11 +37,37 @@ function readPatterns(context) {
   });
 }
 
+function readPayload(context) {
+  return context.body && typeof context.body === "object" && !Buffer.isBuffer(context.body)
+    ? context.body
+    : {};
+}
+
+function readAccess(context) {
+  const payload = readPayload(context);
+  return String(payload.access || context.params.access || "");
+}
+
+function readBooleanOption(context, name) {
+  const payload = readPayload(context);
+  const rawValue = payload[name] !== undefined ? payload[name] : context.params[name];
+
+  if (typeof rawValue === "boolean") {
+    return rawValue;
+  }
+
+  return ["1", "true", "yes", "on"].includes(String(rawValue || "").trim().toLowerCase());
+}
+
 function handleFilePaths(context) {
   try {
     return listAppPathsByPatterns({
+      access: readAccess(context),
+      gitRepositories: readBooleanOption(context, "gitRepositories"),
       patterns: readPatterns(context),
+      projectRoot: context.projectRoot,
       runtimeParams: context.runtimeParams,
+      writableOnly: readBooleanOption(context, "writableOnly"),
       username: context.user?.username,
       watchdog: context.watchdog
     });

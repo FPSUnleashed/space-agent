@@ -3,8 +3,81 @@
 <div
   x-data="{
     isOpen: false,
+    itemSortFrame: 0,
+    itemSortObserver: null,
+    itemsElement: null,
     singleUserApp: Boolean(window.space?.config?.get('SINGLE_USER_APP', false)),
     enterTabAccessKey: 'space.enter.tab-access',
+    readItemOrder(element) {
+      const orderElement = element.matches?.('[data-order], [order]')
+        ? element
+        : element.querySelector?.('[data-order], [order]');
+      const rawOrder = orderElement?.dataset?.order ?? orderElement?.getAttribute?.('order');
+      const order = Number.parseFloat(rawOrder);
+      return Number.isFinite(order) ? order : Number.POSITIVE_INFINITY;
+    },
+    sortItems() {
+      const itemsElement = this.itemsElement;
+      if (!itemsElement) {
+        return;
+      }
+
+      const items = Array.from(itemsElement.children).map((element, index) => ({
+        element,
+        index,
+        order: this.readItemOrder(element)
+      }));
+      const sortedItems = [...items].sort((left, right) => {
+        if (left.order !== right.order) {
+          return left.order - right.order;
+        }
+
+        return left.index - right.index;
+      });
+
+      if (sortedItems.every((item, index) => item.element === items[index]?.element)) {
+        return;
+      }
+
+      const fragment = document.createDocumentFragment();
+      sortedItems.forEach((item) => fragment.appendChild(item.element));
+      itemsElement.appendChild(fragment);
+    },
+    scheduleItemsSort() {
+      if (this.itemSortFrame) {
+        return;
+      }
+
+      this.itemSortFrame = requestAnimationFrame(() => {
+        this.itemSortFrame = 0;
+        this.sortItems();
+      });
+    },
+    mountItemsSorter(itemsElement) {
+      this.itemsElement = itemsElement;
+      this.scheduleItemsSort();
+
+      if (!itemsElement || typeof MutationObserver !== 'function') {
+        return;
+      }
+
+      this.itemSortObserver = new MutationObserver(() => this.scheduleItemsSort());
+      this.itemSortObserver.observe(itemsElement, {
+        attributeFilter: ['data-order', 'order'],
+        attributes: true,
+        childList: true,
+        subtree: true
+      });
+    },
+    unmountItemsSorter() {
+      this.itemSortObserver?.disconnect();
+      this.itemSortObserver = null;
+
+      if (this.itemSortFrame) {
+        cancelAnimationFrame(this.itemSortFrame);
+        this.itemSortFrame = 0;
+      }
+    },
     isEmbeddedInsideAdmin() {
       if (window.top === window) {
         return false;
@@ -26,13 +99,6 @@
         this.navigateCurrent(targetUrl, mode);
       }
     },
-    openAdmin() {
-      const currentUrl = `${window.location.pathname}${window.location.search}${window.location.hash}` || '/index.html';
-      const adminUrl = new URL('/admin', window.location.href);
-      adminUrl.searchParams.set('url', currentUrl);
-      this.isOpen = false;
-      this.navigateTop(adminUrl.href);
-    },
     openRoute(routeHash) {
       const routeUrl = new URL(window.location.pathname + window.location.search, window.location.origin);
       routeUrl.hash = routeHash;
@@ -45,11 +111,12 @@
 
       this.navigateTop(routeUrl.href);
     },
-    openDashboard() {
-      this.openRoute('/dashboard');
+    openHome() {
+      this.openRoute('/');
     },
-    openAgent() {
-      this.openRoute('/agent');
+    openLogout() {
+      this.isOpen = false;
+      this.navigateTop('/logout');
     },
     openLeave() {
       this.isOpen = false;
@@ -57,14 +124,33 @@
         window.sessionStorage.removeItem(this.enterTabAccessKey);
       } catch {}
       this.navigateTop('/enter', 'replace');
+    },
+    openExit() {
+      if (this.singleUserApp) {
+        this.openLeave();
+        return;
+      }
+
+      this.openLogout();
     }
   }"
   class="onscreen-menu"
+  x-init="$nextTick(() => mountItemsSorter($refs.items))"
+  x-destroy="unmountItemsSorter()"
   @click.outside="isOpen = false"
   @keydown.escape.window="isOpen = false"
 >
   <div class="space-topbar-menu">
     <div class="space-topbar onscreen-menu-shell">
+      <button
+        type="button"
+        class="space-topbar-button space-topbar-button--icon"
+        aria-label="Open home"
+        title="Home"
+        @click="openHome()"
+      >
+        <x-icon>home</x-icon>
+      </button>
       <button
         type="button"
         class="space-topbar-button space-topbar-button--icon"
@@ -88,52 +174,19 @@
       role="menu"
       aria-label="Page menu"
     >
+      <x-extension id="_core/onscreen_menu/items" x-ref="items"></x-extension>
+
       <button
         type="button"
         class="space-topbar-menu-action"
         role="menuitem"
-        @click="openDashboard()"
+        @click="openExit()"
       >
-        <x-icon>space_dashboard</x-icon>
-        <span class="space-topbar-menu-action-label">Dashboard</span>
-      </button>
-      <button
-        type="button"
-        class="space-topbar-menu-action"
-        role="menuitem"
-        @click="openAgent()"
-      >
-        <x-icon>smart_toy</x-icon>
-        <span class="space-topbar-menu-action-label">Agent</span>
-      </button>
-      <button
-        type="button"
-        class="space-topbar-menu-action"
-        role="menuitem"
-        @click="openAdmin()"
-      >
-        <x-icon>admin_panel_settings</x-icon>
-        <span class="space-topbar-menu-action-label">Admin</span>
-      </button>
-      <button
-        type="button"
-        class="space-topbar-menu-action"
-        role="menuitem"
-        x-show="!singleUserApp"
-        @click="isOpen = false; try { window.top.location.assign('/logout') } catch(e) { window.location.assign('/logout') }"
-      >
-        <x-icon>logout</x-icon>
-        <span class="space-topbar-menu-action-label">Logout</span>
-      </button>
-      <button
-        type="button"
-        class="space-topbar-menu-action"
-        role="menuitem"
-        x-show="singleUserApp"
-        @click="openLeave()"
-      >
-        <x-icon>exit_to_app</x-icon>
-        <span class="space-topbar-menu-action-label">Leave</span>
+        <x-icon x-text="singleUserApp ? 'exit_to_app' : 'logout'"></x-icon>
+        <span
+          class="space-topbar-menu-action-label"
+          x-text="singleUserApp ? 'Leave' : 'Logout'"
+        ></span>
       </button>
     </div>
   </div>
