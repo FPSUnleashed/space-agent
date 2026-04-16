@@ -13,7 +13,7 @@ Documentation is top priority for this module. After any change under `_core/rou
 This module owns:
 
 - `ext/html/body/start/router-page.html`: thin adapter that mounts the router into the root page shell
-- `view.html`: the routed shell layout, backdrop mount point, route outlet, shell or overlay extension anchors, and the routed-page skill-context tag exported as `route:<current-path>`
+- `view.html`: the routed shell layout, backdrop mount point, route outlet, shell or overlay extension anchors, and the routed-page context tag exported as `route:<current-path>`
 - `route-path.js`: hash-route parsing, normalization, search-param handling, and view-path resolution
 - `router-store.js`: router store, route loading lifecycle, scroll persistence, and error rendering
 - `router-page.js`: router entry module and static backdrop install
@@ -71,7 +71,7 @@ Current shell layout note:
 - normal routed pages should not add extra page-root horizontal gutters just to clear fixed shell chrome or overlay space, because `.router-stage-inner` already centers the shared route column; routes that need more inset should constrain an inner shell or their own cards instead
 - the default authenticated shell should let the document scroll naturally beneath any viewport-fixed shell chrome instead of hiding page overflow at `body` and forcing all routes into an inner scrollbox; route-specific inner scroll ownership should be an explicit router-owned override, not the default
 - the shell currently marks the active route path on both `.router-stage` and `.router-stage-inner` via `data-route-path`
-- the shell also exports the active route path through a hidden `<x-skill-context>` tag in the form `route:<path>` so skill discovery can follow the live route without a separate registry
+- the shell also exports the active route path through a hidden `<x-context>` tag in the form `route:<path>` so skill discovery can follow the live route without a separate registry
 - route-specific shell layout overrides that affect routed frame width, routed height, or routed scroll ownership belong here in router-owned CSS; `_core/spaces` uses a zero-padding, full-height, overflow-hidden stage override keyed by `data-route-path="spaces"`, and the routed frame wrappers should keep stretching to full width and full height so full-bleed routes are not trapped by intermediate grid items
 
 ## Development Guidance

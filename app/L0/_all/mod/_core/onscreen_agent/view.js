@@ -3,7 +3,7 @@ import { formatAttachmentSize } from "/mod/_core/onscreen_agent/attachments.js";
 import { createAgentThreadView } from "/mod/_core/visual/conversation/thread-view.js";
 
 const threadView = createAgentThreadView({
-  assistantAvatarPath: "/mod/_core/onscreen_agent/res/helmet_no_bg_256.webp",
+  assistantAvatarPath: "/mod/_core/visual/res/chat/overlay/helmet_no_bg_256.webp",
   assistantMarkdownClassName: "onscreen-agent-response-markdown",
   autoResizeMaxHeight: 120,
   emptyStateText: "Send a message to start the onscreen agent thread.",

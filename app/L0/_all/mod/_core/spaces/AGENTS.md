@@ -12,7 +12,7 @@ Documentation is top priority for this module. After any change under `_core/spa
 
 This module owns:
 
-- `view.html`: routed spaces canvas shell, the widget-grid mount point, the onboarding stylesheet import, the route-owned current-space header inject markup, and the live `space:open` skill-context tag while a current space is open
+- `view.html`: routed spaces canvas shell, the widget-grid mount point, the onboarding stylesheet import, the route-owned current-space header inject markup, and the live `space:open` context tag while a current space is open
 - `store.js`: spaces store, route-driven loading, runtime namespace registration, current-space replay, current-space topbar actions including confirmed non-example bulk widget clearing, camera-only viewport reposition helpers, widget-card lifecycle, empty-space multi-step onboarding choreography, current-space metadata autosave, renderer cleanup, and direct-manipulation layout interactions
 - `spaces.css`: spaces shell layout, the routed header control cluster, the current-space metadata popover, widget-grid styling, and lightweight widget fallback presentation
 - `onboarding/empty-canvas.js`, `onboarding/empty-canvas.css`, `onboarding/empty-canvas-examples.yaml`, `onboarding/empty-canvas-examples.js`, and `onboarding/empty-canvas-example-helpers.js`: empty-space and loading-canvas DOM builders, animation choreography, config-driven example definitions, module-compiled example bodies, and the imported helper module available to those bodies as `helpers`, including direct camera-only reposition after copied example installs
@@ -167,7 +167,7 @@ Current runtime split:
 
 - Alpine UI state lives in the `spacesPage` store exposed as `$store.spacesPage`
 - current-space browser authoring should go through `space.current`
-- `view.html` should expose the live `space:open` skill-context tag only when a current space is active so the shared skill loader can gate route-specific prompt skills without a separate runtime registry
+- `view.html` should expose the live `space:open` context tag only when a current space is active so the shared skill loader can gate route-specific prompt skills without a separate runtime registry
 - `space.current.readWidget(widgetName)` should resolve the current space's widgets by id or displayed name, build the metadata-first numbered readback with a `renderer↓` line before the numbered renderer source, include a compact serialized `metadata: ...` line when the widget YAML carries structured metadata, log a short plain-text status line, and return that full readback directly in the framework result without touching the onscreen-agent transient `Current Widget` context
 - `space.current.listWidgets()` should return a compact plain-text catalog in the form `widgets (id|name|description)↓` plus one `<id>|<name>|<description>` row per widget so agents can discover the catalog without paying JSON overhead or pulling layout internals or renderer source into conversation history
 - `space.current.seeWidget(widgetName, full = false)` should inspect the currently mounted widget instance, return its live `innerHTML` in the framework result, and strip script or style tags plus event handlers and other nonessential attributes such as `class`, `style`, `id`, and `data-*` when `full` is false so the default output stays short and DOM-structure-focused

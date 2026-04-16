@@ -125,6 +125,7 @@ Current behavior:
 - the route still does not expose authoritative cache scanning, but it now exposes a repo-scoped discard action for saved models by deleting matching Hugging Face responses from the browser Cache API
 - the current-model panel shows one debounced aggregate download label under the progress bar, typically `Downloading model files (loaded / total)`, instead of rapidly alternating per-file names
 - the worker tracks byte counts across all known file downloads and sends an aggregate `loaded / total` snapshot back to the page, so the bar fill and the parenthetical size detail refer to the same total progress
+- the manager and bootstrap worker append a shared runtime-version token to worker module URLs so browser module caching does not keep an older prompt/runtime implementation alive after a source update once the page reloads
 - the page store applies that aggregate snapshot directly instead of latching the highest individual callback value, which avoids the bar pinning at `100%` while more files are still arriving
 - when multiple files are downloading in parallel, the worker coalesces those callbacks into a generic total-progress label on a short cadence so the status line stays readable
 - saved-model rows now include a discard button that deletes matching Hugging Face repo responses from the browser Cache API and removes the affected saved-model entries from local storage
@@ -138,10 +139,11 @@ Current behavior:
 The chat flow is intentionally minimal:
 
 1. the store builds a plain message list from the system prompt plus prior user/assistant turns
-2. the worker computes prompt-token counts from either a chat template or a plain fallback prompt when the tokenizer lacks a usable chat template
-3. generation streams partial text back into the current assistant message
-4. stop uses a worker-owned stopping-criteria gate so generation can end cleanly with `finishReason: "abort"`
-5. when generation ends, the worker sends the final text plus measured metrics
+2. the worker prepares one final prompt string from that message list, preferring the loaded model's processor chat template so Gemma-style ONNX repos keep their model-authored `system`/`user`/`assistant` formatting, falling back to the tokenizer's chat template when available, and only then serializing the chat into one API-style fallback prompt with `System instructions:`, `Conversation:`, and trailing `Assistant:` sections
+3. the worker tokenizes that same prepared prompt for metrics and passes the prepared prompt string into the Transformers.js text-generation pipeline, instead of passing raw chat-message arrays back into the pipeline after a fallback
+4. generation streams partial text back into the current assistant message
+5. stop uses a worker-owned stopping-criteria gate so generation can end cleanly with `finishReason: "abort"`
+6. when generation ends, the worker sends the final text plus measured metrics
 
 The route does not keep any worker-side chat history. Every request is rebuilt from the current message list owned by the page store.
 

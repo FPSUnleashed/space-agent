@@ -37,7 +37,7 @@ Load for framework-backed pages, Alpine stores, `space.*` runtime usage, shared 
 
 ### `development/extensions-components`
 
-Load for `ext/html/`, `ext/js/`, `x-extension`, `x-component`, `x-skill-context`, and layered override behavior.
+Load for `ext/html/`, `ext/js/`, `x-extension`, `x-component`, `x-context`, and layered override behavior.
 
 ### `development/app-files-apis`
 

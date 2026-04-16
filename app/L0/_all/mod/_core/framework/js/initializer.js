@@ -1,5 +1,6 @@
 import * as device from "./device.js";
 import { installFrameworkNewWindowAccess } from "./new-window.js";
+import { syncRuntimeContext } from "./context.js";
 
 const INITIALIZER_MODULE_REF = new URL("../initializer.js", import.meta.url);
 
@@ -8,6 +9,7 @@ export const initialize = globalThis.space.extend(
   async function initialize() {
     installFrameworkNewWindowAccess();
     await setDeviceClass();
+    await syncRuntimeContext();
   }
 );
 

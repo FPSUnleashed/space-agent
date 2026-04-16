@@ -17,7 +17,7 @@ import {
   removeSavedModelEntries,
   validateModelSelection
 } from "/mod/_core/huggingface/helpers.js";
-import { WORKER_INBOUND, WORKER_OUTBOUND } from "/mod/_core/huggingface/protocol.js";
+import { WORKER_INBOUND, WORKER_OUTBOUND, WORKER_RUNTIME_VERSION } from "/mod/_core/huggingface/protocol.js";
 
 const HUGGINGFACE_CONFIG_ROUTE = "/#/huggingface";
 const PERSISTED_MODEL_STORAGE_KEY = "space.huggingface.last-loaded-model";
@@ -580,7 +580,10 @@ class HuggingFaceManager {
     });
     this.createReadyDeferred();
 
-    const worker = new Worker(new URL("./huggingface-worker-bootstrap.js", import.meta.url), {
+    const workerUrl = new URL("./huggingface-worker-bootstrap.js", import.meta.url);
+    workerUrl.searchParams.set("v", WORKER_RUNTIME_VERSION);
+
+    const worker = new Worker(workerUrl, {
       type: "module"
     });
 

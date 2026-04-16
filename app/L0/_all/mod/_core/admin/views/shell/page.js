@@ -1,4 +1,4 @@
-const ADMIN_AGENT_AVATAR_PATH = "/mod/_core/admin/res/helmet_no_bg_256.webp";
+const ADMIN_AGENT_AVATAR_PATH = "/mod/_core/visual/res/chat/admin/helmet_no_bg_256.webp";
 const ADMIN_GROUP_ID = "_admin";
 
 const tabs = [

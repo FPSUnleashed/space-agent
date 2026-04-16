@@ -1,0 +1,87 @@
+<html>
+  <head>
+    <link rel="stylesheet" href="/mod/_core/web_browsing/window.css" />
+    <script type="module" src="/mod/_core/web_browsing/store.js"></script>
+  </head>
+  <body>
+    <div
+      x-data
+      class="web-browsing-overlay"
+      x-cloak
+      x-init="$store.webBrowsing.mount({ panel: $refs.panel })"
+      x-destroy="$store.webBrowsing.unmount()"
+      x-show="$store.webBrowsing.isOpen"
+      @pointermove.window="$store.webBrowsing.handlePointerMove($event)"
+      @pointerup.window="$store.webBrowsing.stopPointer($event)"
+      @pointercancel.window="$store.webBrowsing.stopPointer($event)"
+      @resize.window="$store.webBrowsing.handleViewportResize()"
+    >
+      <section
+        x-ref="panel"
+        class="web-browsing-window"
+        :class="{
+          'is-dragging': $store.webBrowsing.interaction?.type === 'drag',
+          'is-minimized': $store.webBrowsing.isMinimized,
+          'is-resizing': $store.webBrowsing.interaction?.type === 'resize'
+        }"
+        :style="$store.webBrowsing.panelStyle"
+        @pointerdown="$store.webBrowsing.focusWindow()"
+      >
+        <header
+          class="web-browsing-window-titlebar"
+          aria-label="Browser window controls"
+          @pointerdown="$store.webBrowsing.startDrag($event)"
+        >
+          <span class="web-browsing-window-dot" aria-hidden="true"></span>
+
+          <div class="web-browsing-window-title">
+            <strong>Browser</strong>
+          </div>
+
+          <div class="web-browsing-window-controls">
+            <button
+              type="button"
+              class="web-browsing-window-control"
+              :aria-label="$store.webBrowsing.isMinimized ? 'Restore browser window' : 'Minimize browser window'"
+              :title="$store.webBrowsing.isMinimized ? 'Restore' : 'Minimize'"
+              @pointerdown.stop
+              @click.stop="$store.webBrowsing.toggleMinimized()"
+            >
+              <span x-text="$store.webBrowsing.isMinimized ? '+' : '-'"></span>
+            </button>
+
+            <button
+              type="button"
+              class="web-browsing-window-control web-browsing-window-control-close"
+              aria-label="Close browser window"
+              title="Close"
+              @pointerdown.stop
+              @click.stop="$store.webBrowsing.closeWindow()"
+            >
+              <span>&times;</span>
+            </button>
+          </div>
+        </header>
+
+        <div class="web-browsing-window-body">
+          <iframe
+            id="browser-1"
+            name="browser-1"
+            class="web-browsing-window-frame"
+            title="Browser frame"
+            src="/mod/_core/web_browsing/browser-frame.html"
+            data-space-inject="/mod/_core/web_browsing/browser-frame-inject.js"
+          ></iframe>
+        </div>
+
+        <button
+          type="button"
+          class="web-browsing-resize-handle"
+          aria-label="Resize browser window"
+          title="Resize"
+          @pointerdown.stop="$store.webBrowsing.startResize($event)"
+        ></button>
+      </section>
+    </div>
+  </body>
+</html>

@@ -4,7 +4,7 @@
 
 `_core/visual/` owns the shared Space Agent visual system.
 
-It provides the reusable canvas, chrome, buttons, dialogs, cards, and conversation rendering primitives that feature modules compose on top of. It should own shared presentation logic, not feature-specific state or workflows.
+It provides the reusable canvas, chrome, buttons, dialogs, cards, conversation rendering primitives, and shared authenticated-app visual assets that feature modules compose on top of. It should own shared presentation logic and reusable artwork, not feature-specific state or workflows.
 
 Documentation is top priority for this module. After any change under `_core/visual/`, update this file and any affected parent docs in the same session.
 
@@ -20,6 +20,7 @@ Current sub-areas:
 - `forms/`: native dialog styling and helpers
 - `conversation/`: shared agent-thread rendering helpers
 - `surfaces/`: shared panel and card treatments
+- `res/`: canonical shared image assets for authenticated app surfaces
 
 ## Current Contracts
 
@@ -52,6 +53,12 @@ Actions and forms:
 - `forms/dialog.css` plus `forms/dialog.js` own the shared native `<dialog>` presentation and open or close helpers
 - `forms/dialog.css` also owns the reusable fixed-chrome dialog shell classes for long modals: `dialog-card-shell` keeps the header and footer static, `dialog-scroll-body` and `dialog-scroll-frame` own the interior scrolling region, and `dialog-actions-split` plus `dialog-actions-group` and `dialog-action-button-fixed` cover compact split footer rows without feature-local inline layout
 - modal-scoped button chrome belongs in `forms/dialog.css`, not in feature-local styles: dialogs should use the tighter admin-style geometry with compact 10px radii, no oversized pill buttons, transparent secondary actions, and flatter primary or confirm actions without the large shared button shadows
+
+Resources:
+
+- `res/` is the canonical home for reusable authenticated-app artwork such as the overlay chat astronaut, admin chat avatars, shared placeholder helmets, and staged engineer variants that are not yet wired into runtime UI
+- repo-owned authenticated app modules should reference shared images from `/mod/_core/visual/res/...` instead of keeping image files in feature-local module folders
+- public or pre-auth shells that live outside the authenticated app module tree, including `/login` and `/enter`, keep their own mirrored astronaut asset under `server/pages/res/`
 
 Conversation and surfaces:
 

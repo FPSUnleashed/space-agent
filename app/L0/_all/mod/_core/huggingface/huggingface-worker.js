@@ -1,8 +1,9 @@
-import { normalizeHuggingFaceModelInput, normalizeMaxNewTokens } from "/mod/_core/huggingface/helpers.js";
+import { buildHuggingFaceFallbackPrompt, normalizeHuggingFaceModelInput, normalizeMaxNewTokens } from "/mod/_core/huggingface/helpers.js";
 import { WORKER_INBOUND, WORKER_OUTBOUND } from "/mod/_core/huggingface/protocol.js";
 
 let runtimeModulePromise = null;
 let generator = null;
+let processor = null;
 let tokenizer = null;
 let currentGenerateRequestId = "";
 let currentLoadRequestId = "";
@@ -438,24 +439,6 @@ function extractFirstSequence(outputIds) {
   return [];
 }
 
-function buildFallbackPrompt(messages = []) {
-  const lines = [];
-
-  for (const message of Array.isArray(messages) ? messages : []) {
-    const role = message?.role === "assistant" ? "assistant" : message?.role === "system" ? "system" : "user";
-    const content = String(message?.content || "").trim();
-
-    if (!content) {
-      continue;
-    }
-
-    lines.push(`${role}: ${content}`);
-  }
-
-  lines.push("assistant:");
-  return lines.join("\n\n");
-}
-
 async function ensureRuntimeModule() {
   if (!runtimeModulePromise) {
     runtimeModulePromise = import("/mod/_core/huggingface/transformers.js");
@@ -464,23 +447,55 @@ async function ensureRuntimeModule() {
   return runtimeModulePromise;
 }
 
-async function prepareInputs(messages = []) {
+async function preparePrompt(messages = []) {
   if (!tokenizer) {
     throw new Error("Load a model before sending a chat message.");
   }
 
+  if (typeof processor?.apply_chat_template === "function") {
+    try {
+      const promptText = processor.apply_chat_template(messages, {
+        add_generation_prompt: true,
+        enable_thinking: false,
+        tokenize: false
+      });
+
+      if (typeof promptText === "string" && promptText.length > 0) {
+        const inputs = processor.apply_chat_template(messages, {
+          add_generation_prompt: true,
+          enable_thinking: false,
+          return_dict: true,
+          tokenize: true
+        });
+
+        return {
+          addSpecialTokens: false,
+          promptText,
+          promptTokenCount: extractFirstSequenceLength(inputs?.input_ids)
+        };
+      }
+    } catch {
+      // Fall back to tokenizer formatting or handwritten prompt formatting when the processor template is unavailable.
+    }
+  }
+
   if (typeof tokenizer.apply_chat_template === "function") {
     try {
-      const inputs = tokenizer.apply_chat_template(messages, {
+      const promptText = tokenizer.apply_chat_template(messages, {
         add_generation_prompt: true,
-        return_dict: true
+        tokenize: false
       });
-      const promptTokenCount = extractFirstSequenceLength(inputs?.input_ids);
 
-      if (promptTokenCount > 0) {
+      if (typeof promptText === "string" && promptText.length > 0) {
+        const inputs = await tokenizer(promptText, {
+          add_special_tokens: false,
+          return_dict: true
+        });
+
         return {
-          inputs,
-          promptTokenCount
+          addSpecialTokens: false,
+          promptText,
+          promptTokenCount: extractFirstSequenceLength(inputs?.input_ids)
         };
       }
     } catch {
@@ -488,13 +503,16 @@ async function prepareInputs(messages = []) {
     }
   }
 
-  const promptText = buildFallbackPrompt(messages);
+  const promptText = buildHuggingFaceFallbackPrompt(messages);
+  const addSpecialTokens = (tokenizer.add_bos_token || tokenizer.add_eos_token) ?? false;
   const inputs = await tokenizer(promptText, {
+    add_special_tokens: addSpecialTokens,
     return_dict: true
   });
 
   return {
-    inputs,
+    addSpecialTokens,
+    promptText,
     promptTokenCount: extractFirstSequenceLength(inputs?.input_ids)
   };
 }
@@ -535,6 +553,7 @@ async function handleLoadModel(payload = {}) {
   currentLoadRequestId = requestId;
   currentLoadProgressTracker = createLoadProgressTracker();
   generator = null;
+  processor = null;
   tokenizer = null;
   currentModelId = "";
   currentDtype = "";
@@ -572,7 +591,8 @@ async function handleLoadModel(payload = {}) {
       progress_callback
     });
     flushLoadProgressTracker(currentLoadProgressTracker, requestId, modelId);
-    tokenizer = generator?.tokenizer || null;
+    processor = generator?.processor || null;
+    tokenizer = processor?.tokenizer || generator?.tokenizer || null;
     postTrace("pipeline-load:done", {
       dtype,
       modelId,
@@ -596,6 +616,7 @@ async function handleLoadModel(payload = {}) {
     disposeLoadProgressTracker(currentLoadProgressTracker);
     currentLoadProgressTracker = null;
     generator = null;
+    processor = null;
     tokenizer = null;
     currentModelId = "";
     currentDtype = "";
@@ -657,7 +678,7 @@ async function handleRunChat(payload = {}) {
   try {
     const runtimeModule = await ensureRuntimeModule();
     const { StoppingCriteria, TextStreamer } = runtimeModule;
-    const { promptTokenCount } = await prepareInputs(payload.messages);
+    const { addSpecialTokens, promptText, promptTokenCount } = await preparePrompt(payload.messages);
     const requestOptions =
       payload.requestOptions && typeof payload.requestOptions === "object" && !Array.isArray(payload.requestOptions)
         ? { ...payload.requestOptions }
@@ -667,6 +688,8 @@ async function handleRunChat(payload = {}) {
     );
     delete requestOptions.max_new_tokens;
     delete requestOptions.maxNewTokens;
+    delete requestOptions.add_special_tokens;
+    delete requestOptions.return_full_text;
 
     if (!Object.hasOwn(requestOptions, "do_sample")) {
       requestOptions.do_sample = Object.hasOwn(requestOptions, "temperature") || Object.hasOwn(requestOptions, "top_p");
@@ -785,9 +808,11 @@ async function handleRunChat(payload = {}) {
       });
     });
 
-    const outputs = await generator(payload.messages, {
+    const outputs = await generator(promptText, {
       ...requestOptions,
+      add_special_tokens: addSpecialTokens,
       max_new_tokens: maxNewTokens,
+      return_full_text: false,
       stopping_criteria: stoppingCriteria,
       streamer
     });

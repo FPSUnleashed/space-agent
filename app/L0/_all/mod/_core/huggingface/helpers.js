@@ -237,35 +237,106 @@ export function createChatMessage(role, content = "") {
   };
 }
 
+function normalizeHuggingFaceChatRole(role = "") {
+  return role === "system" || role === "assistant" || role === "user" ? role : "";
+}
+
+function normalizeHuggingFaceChatContent(value) {
+  return String(value ?? "").replace(/\r\n?/gu, "\n").trim();
+}
+
+function joinHuggingFaceMessageContent(left = "", right = "") {
+  return [left, right].filter((content) => typeof content === "string" && content.length).join("\n\n");
+}
+
+function mergeHuggingFaceChatMessages(messages = []) {
+  return (Array.isArray(messages) ? messages : []).reduce((mergedMessages, message) => {
+    const previousMessage = mergedMessages[mergedMessages.length - 1];
+
+    if (
+      previousMessage
+      && previousMessage.role === message.role
+      && (message.role === "user" || message.role === "assistant")
+    ) {
+      previousMessage.content = joinHuggingFaceMessageContent(previousMessage.content, message.content);
+      return mergedMessages;
+    }
+
+    mergedMessages.push({
+      ...message
+    });
+    return mergedMessages;
+  }, []);
+}
+
+export function normalizeHuggingFaceChatMessages(messages = []) {
+  if (!Array.isArray(messages)) {
+    return [];
+  }
+
+  return messages
+    .map((message) => {
+      const role = normalizeHuggingFaceChatRole(message?.role);
+      const content = normalizeHuggingFaceChatContent(message?.content);
+
+      if (!role || !content) {
+        return null;
+      }
+
+      return {
+        content,
+        role
+      };
+    })
+    .filter(Boolean);
+}
+
+export function buildHuggingFaceFallbackPrompt(messages = []) {
+  const normalizedMessages = mergeHuggingFaceChatMessages(normalizeHuggingFaceChatMessages(messages));
+  const systemMessages = normalizedMessages.filter((message) => message.role === "system");
+  const conversationMessages = normalizedMessages.filter((message) => message.role !== "system");
+  const promptBlocks = [
+    "You are continuing a chat conversation.",
+    "Answer with only the next assistant message.",
+    "Do not repeat the system instructions.",
+    "Do not emit role labels such as User: or Assistant:.",
+    "Do not continue the transcript beyond the assistant reply.",
+    ""
+  ];
+
+  if (systemMessages.length) {
+    promptBlocks.push("System instructions:");
+    promptBlocks.push(systemMessages.map((message) => message.content).join("\n\n"));
+    promptBlocks.push("");
+  }
+
+  if (conversationMessages.length) {
+    promptBlocks.push("Conversation:");
+    promptBlocks.push("");
+
+    for (const message of conversationMessages) {
+      promptBlocks.push(message.role === "assistant" ? "Assistant:" : "User:");
+      promptBlocks.push(message.content);
+      promptBlocks.push("");
+    }
+  }
+
+  promptBlocks.push("Assistant:");
+  return promptBlocks.join("\n");
+}
+
 export function buildChatMessages(systemPrompt, messages = []) {
-  const payload = [];
   const normalizedSystemPrompt = sanitizeText(systemPrompt);
 
-  if (normalizedSystemPrompt) {
-    payload.push({
-      content: normalizedSystemPrompt,
-      role: "system"
-    });
-  }
-
-  for (const message of Array.isArray(messages) ? messages : []) {
-    const content = String(message?.content || "");
-
-    if (!content.trim()) {
-      continue;
-    }
-
-    if (message?.role !== "user" && message?.role !== "assistant") {
-      continue;
-    }
-
-    payload.push({
-      content,
-      role: message.role
-    });
-  }
-
-  return payload;
+  return mergeHuggingFaceChatMessages([
+    ...(normalizedSystemPrompt
+      ? [{
+          content: normalizedSystemPrompt,
+          role: "system"
+        }]
+      : []),
+    ...normalizeHuggingFaceChatMessages(messages)
+  ]);
 }
 
 export function normalizeUsageMetrics(metrics = {}) {

@@ -33,7 +33,7 @@ Important rules:
 - new spaces start empty
 - on first login, `_core/spaces` uses the shared `_core/login_hooks/first_login` seam to copy or reuse the bundled `_core/spaces/onboarding/onboarding_space/` template, whose `space.yaml` owns the `Big Bang` title, icon, color, and onboarding instructions, then on the main `/` shell rewrites the initial route so the router lands in that space instead of the default dashboard
 - on the dashboard, `_core/spaces` now exposes the same create flow through both the spaces launcher and the always-available `New Space` topbar action injected through `_core/dashboard/topbar_primary`, so either entry point creates an empty space and opens it as a new route history entry
-- while the spaces page is mounted with a current space, `view.html` exports a hidden `space:open` skill-context tag
+- while the spaces page is mounted with a current space, `view.html` exports a hidden `space:open` context tag on top of the framework-owned runtime context that already exposes `runtime-browser` or `runtime-app`
 - widget ids come from widget filenames
 - the manifest should not invent fake untitled titles
 - widget source is now YAML-first; old `widgets/*.js` files are migration input only

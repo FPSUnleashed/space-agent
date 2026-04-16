@@ -8,7 +8,7 @@
   </head>
   <body>
     <div x-data class="onscreen-agent-root agent-thread-surface" x-init="$nextTick(() => $store.onscreenAgent.init())">
-      <x-skill-context tag="onscreen"></x-skill-context>
+      <x-context data-tags="onscreen"></x-context>
       <template x-if="$store.onscreenAgent && $store.onscreenAgent.shouldRenderShell">
         <section
           class="onscreen-agent-shell"
@@ -90,7 +90,7 @@
                 <span class="onscreen-agent-avatar-flip">
                   <img
                     class="onscreen-agent-avatar-image"
-                    src="/mod/_core/onscreen_agent/res/astronaut_no_bg.webp"
+                    src="/mod/_core/visual/res/chat/overlay/astronaut_no_bg.webp"
                     alt=""
                     aria-hidden="true"
                     draggable="false"

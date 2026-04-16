@@ -69,6 +69,7 @@ Current worker and runtime contract:
 - the worker should also forward its own `console.error` calls back to the page over the worker protocol so runtime logs from inside the worker survive even when the browser surfaces only an opaque worker crash event
 - the worker should emit explicit load-stage trace markers over the worker protocol around runtime import and pipeline load so opaque browser-level worker crashes can still be narrowed down to the last completed phase
 - startup import failures in the heavy worker module should be caught in the bootstrap worker so the page can receive at least one explicit trace/log payload before the browser reports a generic worker crash
+- `manager.js` and `huggingface-worker-bootstrap.js` should append the shared worker-runtime version token to their module URLs so browser module caching does not pin stale prompt/runtime code after a source update
 - the manager persists the last successfully loaded model config in browser-wide local storage, should auto-reload it when the first subscriber boots in the same browser profile, and should expose it as the preferred saved-model selection for admin and onscreen local-provider drafts without treating it as user-specific app-file preference
 - admin or onscreen chat may intentionally unload the shared Hugging Face model with `reboot: false` so the page can free GPU memory instead of tearing down and immediately re-booting an idle worker
 - the helper layer still owns the browser-storage shaping for saved-model entries, while `manager.js` owns the live shared saved-model state that the routed page, admin selector, and onscreen selector subscribe to
@@ -93,6 +94,9 @@ Current model-loading contract:
 Current chat and metrics contract:
 
 - the page supports only plain system prompt text plus plain user and assistant chat turns
+- the worker must prepare one prompt string before generation and pass that prepared prompt into the Transformers.js text-generation pipeline; after a chat-template fallback, it must not pass raw chat-message arrays back into the pipeline or template-less tokenizers will throw again inside the pipeline's own chat formatting path
+- when a loaded model exposes a processor chat template, the worker should use that processor template first so Gemma-style ONNX repos keep their model-authored `system`/`user`/`assistant` formatting and thinking-history stripping instead of falling back to handwritten transcript shaping
+- only when neither the processor nor the tokenizer has a usable chat template should `_core/huggingface/helpers.js` serialize the conversation into one API-style fallback prompt with explicit `System instructions:`, `Conversation:`, and trailing `Assistant:` sections instead of a lossy `role: text` fallback or a transcript format that encourages the model to echo structural markers
 - the chat column should present a `Testing chat` heading with the clear-chat action inline beside it
 - there is no tool execution, skill routing, attachments, queueing, or persisted history in this module
 - the stop action must interrupt generation in the worker through a stopping-criteria gate instead of faking cancellation in the UI

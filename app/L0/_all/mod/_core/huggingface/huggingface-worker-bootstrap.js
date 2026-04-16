@@ -1,4 +1,4 @@
-import { WORKER_OUTBOUND } from "/mod/_core/huggingface/protocol.js";
+import { WORKER_OUTBOUND, WORKER_RUNTIME_VERSION } from "/mod/_core/huggingface/protocol.js";
 
 let runtimeModulePromise = null;
 
@@ -24,7 +24,9 @@ function serializeError(error) {
 
 async function ensureRuntimeModule() {
   if (!runtimeModulePromise) {
-    runtimeModulePromise = import("/mod/_core/huggingface/huggingface-worker.js");
+    const runtimeUrl = new URL("./huggingface-worker.js", self.location.href);
+    runtimeUrl.searchParams.set("v", WORKER_RUNTIME_VERSION);
+    runtimeModulePromise = import(runtimeUrl.href);
   }
 
   return runtimeModulePromise;

@@ -41,6 +41,7 @@ Current module-local docs in the app tree:
 - `app/L0/_all/mod/_core/visual/AGENTS.md`
 - `app/L0/_all/mod/_core/file_explorer/AGENTS.md`
 - `app/L0/_all/mod/_core/huggingface/AGENTS.md`
+- `app/L0/_all/mod/_core/web_browsing/AGENTS.md`
 - `app/L0/_all/mod/_core/webllm/AGENTS.md`
 - `app/L0/_all/mod/_core/admin/AGENTS.md`
 - `app/L0/_all/mod/_core/admin/views/agent/AGENTS.md`
@@ -114,7 +115,7 @@ Current major first-party modules under `app/L0/_all/mod/_core/`:
 
 - `framework/`: frontend bootstrap, runtime primitives, component loader, extension system, shared utilities
 - `login_hooks/`: headless authenticated-bootstrap lifecycle hooks for first-login and same-origin `/login` arrival events, with a client-owned `~/meta/login_hooks.json` marker and feature-owned onboarding hooks such as the spaces module's first-login `Big Bang` onboarding-space bootstrap
-- `visual/`: shared visual language, canvas, chrome, buttons, dialog helpers, and conversation rendering primitives
+- `visual/`: shared visual language, canvas, chrome, buttons, dialog helpers, conversation rendering primitives, and reusable authenticated-app imagery under `visual/res/`; pre-auth `/login` and `/enter` keep their mirrored astronaut asset under `server/pages/res/`
 - `router/`: root routed shell for the authenticated app; route-level frame width, height or scroll policy, the shared shell-owned top-clearance budget, and other shell-owned layout overrides belong here rather than in feature modules, while routed pages own their own vertical spacing, any route-specific bottom breathing room, and local card padding but should avoid shell-compensation horizontal gutters at the route root
 - `admin/`: firmware-backed admin shell and panels, including a mirrored `[id="_core/onscreen_menu/bar_start"]` inject host above admin tab content so embedded routed surfaces can reuse their existing injected controls inside `/admin`
 - `agent/`: routed first-party agent information and user-local personality include editor, kept self-contained inside the module and advertised to the dashboard through `ext/panels/agent.yaml`
@@ -128,6 +129,7 @@ Current major first-party modules under `app/L0/_all/mod/_core/`:
 - `onscreen_agent/`: floating routed overlay agent and the first-party user-facing chat runtime
 - `onscreen_menu/`: reserved routed shell header bar, Home shortcut to the empty default route, left and right shell-control seams, and `_core/onscreen_menu/items` dropdown action seam
 - `open_router/`: headless OpenRouter request-policy module that extends the admin and onscreen API transport seams instead of hardcoding provider-specific headers into the chat runtimes
+- `web_browsing/`: floating browser-overlay module that contributes a Browser dropdown action and mounts a draggable, minimizable, resizable iframe window through the routed overlay seam
 - `skillset/`: first-party shared skill packs plus browser helper scripts and shared browser-side skill discovery helpers used by the onscreen and admin agents
 - `webllm/`: unlisted routed browser-only WebLLM test surface with a module-local worker, vendored browser runtime, compact searchable prebuilt model loading, expert-only compiled custom model loading, and simple throughput reporting
 - `huggingface/`: dashboard-listed Local LLM page backed by a routed browser-only Hugging Face Transformers.js test surface, with a module-local singleton runtime manager and worker, direct Hub model loading, a vendored local browser runtime for upstream testing, shared saved-model state and browser-wide last-loaded selection reused by the admin and onscreen agents in the same browser context, and simple throughput reporting
@@ -150,7 +152,7 @@ Current major first-party modules under `app/L0/_all/mod/_core/`:
 - browser-facing code and assets should normally be delivered through `/mod/...`
 - group-scoped onscreen skill packs may live under readable layer roots such as `L0/_admin/mod/.../ext/skills/`; visibility follows the same readable-root permission model as app-file discovery, and each skill file is named `SKILL.md`
 - when a skill needs reusable browser logic, keep that logic in a small module-local JS file and import it from the skill via a stable `/mod/<author>/<repo>/...` path instead of pasting long scripts into `SKILL.md`
-- skill files may use `metadata.when` as either `true` or a `{ tags: [...] }` condition to require live page-owned skill-context tags before they become catalog-loadable, may use `metadata.loaded` as either `true` or another `{ tags: [...] }` condition to auto-inject their body into prompt context after the catalog, and may use `metadata.placement` to route that auto-included or explicitly loaded skill body into the system prompt, transient block, or standard conversation history; auto-loaded discovery is top-level only at `ext/skills/*/SKILL.md`, while nested skill ids remain loadable only through explicit routing skills or direct `space.skills.load(...)`; ordinary skills still default missing or invalid placement to `history`, but auto-loaded skills may land only in `system` or `transient`, so missing or invalid placement and explicit `history` all fall back to `system` unless they explicitly set `transient`
+- skill files may use `metadata.when` as either `true` or a `{ tags: [...] }` condition to require live page-owned context tags before they become catalog-loadable, may use `metadata.loaded` as either `true` or another `{ tags: [...] }` condition to auto-inject their body into prompt context after the catalog, and may use `metadata.placement` to route that auto-included or explicitly loaded skill body into the system prompt, transient block, or standard conversation history; auto-loaded discovery is top-level only at `ext/skills/*/SKILL.md`, while nested skill ids remain loadable only through explicit routing skills or direct `space.skills.load(...)`; ordinary skills still default missing or invalid placement to `history`, but auto-loaded skills may land only in `system` or `transient`, so missing or invalid placement and explicit `history` all fall back to `system` unless they explicitly set `transient`
 - when a skill belongs in prompt context, add or update its `ext/skills/.../SKILL.md` metadata; do not hardcode individual skill ids into prompt-builder JS when the shared discovery contract already covers the behavior
 - the first-party `_core/memory` skill is auto-loaded into agent system prompts and standardizes persistent user memory under `~/memory/behavior.system.include.md`, `~/memory/memories.transient.include.md`, and optional extra `~/memory/*.transient.include.md` files; those files still flow through `_core/promptinclude` rather than a separate storage system
 - when a stable frontend contract or workflow changes, update the relevant narrative docs under `app/L0/_all/mod/_core/documentation/docs/` alongside the owning `AGENTS.md` files
@@ -200,6 +202,7 @@ HTML extension anchors:
 - `_core/framework` also creates `_core/framework/head/end` in `document.head` during bootstrap so layers can add declarative head-side tags or inline bootstraps without editing page shells or adding a JS hook
 - runtime discovery watches the whole document tree, so `x-extension` and `x-component` insertions under `head` are supported the same way as body-mounted seams
 - `_core/onscreen_menu` owns a reserved centered header bar from `_core/router/shell_start`; it keeps `_core/onscreen_menu/bar_start` on the left and `_core/onscreen_menu/bar_end` on the right for shell-level controls, allows route-owned `x-inject` content to target the existing left-side `[id="_core/onscreen_menu/bar_start"]` container when a feature wants ephemeral controls that disappear with the route but the shell seam may mount later, keeps a persistent Home button that routes to the empty route `#/` so the router default decides the home screen, and exposes `_core/onscreen_menu/items` as the dropdown action seam for non-Home feature buttons, whose modules contribute thin button adapters with numeric `data-order` values while `_core/onscreen_menu` sorts them automatically and keeps only the auth exit action local after the seam; `_core/dashboard` is the current first-party example of a route-owned wrapper that injects into `bar_start` and then exposes ordered dashboard-local seams for dashboard-only topbar actions
+- `_core/web_browsing` is the current first-party example of a module that uses both `_core/onscreen_menu/items` and `page/router/overlay/end`: it contributes a Browser menu action at `data-order="250"`, mounts a draggable, minimizable, resizable floating iframe window, and keeps its iframe-side browsing bridge self-contained through a `data-space-inject` path plus a matching module-local outside helper; packaged desktop runs may activate that path through the Electron frame-preload hook while normal browser sessions still leave it inactive
 
 JS extension hooks:
 
@@ -220,13 +223,14 @@ Module-owned extension metadata:
 - the current first-party example is `ext/panels/*.yaml`, which the dashboard panel index discovers through `file_paths` and batch-reads through `fileRead(...)`
 - keep those metadata manifests small and display-oriented; they are extension-resolved module assets, not a second general-purpose storage system
 
-Skill-context tags:
+Context tags:
 
-- modules may export live prompt-skill context through hidden `<x-skill-context>` elements anywhere in mounted DOM
-- skill discovery unions the current document's `tag` and `tags` values from those elements each time a skill catalog, auto-loaded block, or explicit skill load is resolved
-- modules own the actual tag names they emit; the framework does not reserve a hardcoded route or surface tag registry
-- current first-party examples are `onscreen` from the overlay, `admin` from the admin shell, router-owned tags such as `route:<current-path>`, and feature-owned state tags such as `space:open`
-- Alpine attribute binding on `<x-skill-context>` is the normal way to make tags follow live routed or store state
+- modules may export live runtime context through hidden `<x-context>` elements anywhere in mounted DOM; skill filtering is one consumer of those tags
+- the shared framework helper at `/mod/_core/framework/js/context.js` owns generic DOM reads of those elements through `getContexts(...)`, `getAttributeValues(...)`, `getTags(...)`, and `getContents(...)`
+- skill discovery unions the current document's `data-tags` values from those elements each time a skill catalog, auto-loaded block, or explicit skill load is resolved
+- the framework reserves `data-runtime` for its own hidden runtime context element; that element also emits `runtime-browser` or `runtime-app` through `data-tags`, while modules own the rest of the feature or route tags they emit
+- current first-party examples are framework-owned runtime tags `runtime-browser` or `runtime-app`, `onscreen` from the overlay, `admin` from the admin shell, router-owned tags such as `route:<current-path>`, and feature-owned state tags such as `space:open`
+- Alpine attribute binding on `<x-context>` is the normal way to make tags follow live routed or store state
 
 Resolution and overrides:
 

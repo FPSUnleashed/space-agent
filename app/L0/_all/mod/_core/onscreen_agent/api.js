@@ -1,7 +1,6 @@
 import * as config from "/mod/_core/onscreen_agent/config.js";
 import * as llmParams from "/mod/_core/onscreen_agent/llm-params.js";
 import { prepareOnscreenAgentCompletionRequest } from "/mod/_core/onscreen_agent/llm.js";
-import { mergeConsecutiveChatMessages } from "/mod/_core/framework/js/chat-messages.js";
 import { getHuggingFaceManager } from "/mod/_core/huggingface/manager.js";
 
 function extractTextContent(value) {
@@ -188,9 +187,7 @@ async function readStreamingResponse(response, onDelta) {
 }
 
 function normalizeCompletionMessagesForLocal(messages) {
-  const mergedMessages = mergeConsecutiveChatMessages(Array.isArray(messages) ? messages : []);
-
-  return mergedMessages
+  return (Array.isArray(messages) ? messages : [])
     .map((message) => {
       const role =
         message?.role === "system"
@@ -387,6 +384,7 @@ export class OnscreenAgentLocalLlmClient extends OnscreenAgentLlmClient {
       : [];
     const requestMessages = Array.isArray(preparedRequest?.messages) ? preparedRequest.messages : [];
 
+    // Local generation should reuse the same final transport message shape as the API path.
     return normalizeCompletionMessagesForLocal(requestBodyMessages.length ? requestBodyMessages : requestMessages);
   }
 

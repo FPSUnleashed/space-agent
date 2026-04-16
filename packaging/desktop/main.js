@@ -1,7 +1,9 @@
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
-const { app, BrowserWindow, ipcMain, net } = require("electron");
+const { app, BrowserWindow, ipcMain, net, webFrameMain } = require("electron");
 
+const DESKTOP_FRAME_PRELOAD_PATH = path.join(__dirname, "frame-preload.js");
+const DESKTOP_FRAME_INJECT_REGISTER_CHANNEL = "space-desktop:frame-inject-register";
 const PROJECT_ROOT = path.resolve(__dirname, "../..");
 const SERVER_APP_PATH = path.join(PROJECT_ROOT, "server", "app.js");
 const BASE_WINDOW_TITLE = "Space Agent";
@@ -21,12 +23,205 @@ let lastDesktopUpdateFailureKey = "";
 let lastDesktopUpdateFailureAt = 0;
 let desktopUpdateCheckPromise = null;
 let desktopUpdateDownloadPromise = null;
+let desktopFramePreloadRegistrationId = "";
+const desktopFrameInjectionRegistry = new Map();
 let desktopUpdateState = {
   state: "idle",
   message: "",
   progress: null,
   version: ""
 };
+
+function registerDesktopFramePreload(webContents) {
+  if (!app.isPackaged || desktopFramePreloadRegistrationId) {
+    return;
+  }
+
+  const currentSession = webContents?.session;
+  if (!currentSession || typeof currentSession.registerPreloadScript !== "function") {
+    return;
+  }
+
+  desktopFramePreloadRegistrationId = currentSession.registerPreloadScript({
+    filePath: DESKTOP_FRAME_PRELOAD_PATH,
+    id: "space-desktop-frame-preload",
+    type: "frame"
+  });
+}
+
+function replaceDesktopFrameInjectionRegistry(webContentsId, frames = []) {
+  const nextRegistry = new Map();
+
+  if (Array.isArray(frames)) {
+    frames.forEach((entry) => {
+      const frameName = String(entry?.frameName || "").trim();
+      const injectPath = String(entry?.injectPath || "").trim();
+      if (!frameName || !injectPath) {
+        return;
+      }
+
+      nextRegistry.set(frameName, {
+        frameName,
+        iframeId: String(entry?.iframeId || frameName).trim() || frameName,
+        injectPath
+      });
+    });
+  }
+
+  desktopFrameInjectionRegistry.set(webContentsId, nextRegistry);
+}
+
+function clearDesktopFrameInjectionRegistry(webContentsId) {
+  desktopFrameInjectionRegistry.delete(webContentsId);
+}
+
+function getDesktopFrameInjectionEntry(webContentsId, frameName) {
+  const registry = desktopFrameInjectionRegistry.get(webContentsId);
+  if (!registry) {
+    return null;
+  }
+
+  return registry.get(String(frameName || "").trim()) || null;
+}
+
+function getDesktopFrameInjectBaseOrigin(frame, webContents) {
+  const topOrigin = String(frame?.top?.origin || "").trim();
+  if (topOrigin && topOrigin !== "null") {
+    return topOrigin;
+  }
+
+  try {
+    return new URL(webContents?.getURL?.() || serverRuntime?.browserUrl || "").origin;
+  } catch {
+    return "";
+  }
+}
+
+function resolveDesktopFrameInjectUrl(baseOrigin, injectPath) {
+  const normalizedPath = String(injectPath || "").trim();
+  if (!normalizedPath) {
+    throw new Error("Desktop frame injection requires a non-empty inject path.");
+  }
+
+  if (!baseOrigin) {
+    throw new Error("Desktop frame injection could not resolve the current app origin.");
+  }
+
+  let injectUrl = null;
+  try {
+    injectUrl = new URL(normalizedPath, `${baseOrigin}/`);
+  } catch {
+    throw new Error(`Desktop frame injection rejected invalid script path \"${normalizedPath}\".`);
+  }
+
+  if (!/^https?:$/u.test(injectUrl.protocol)) {
+    throw new Error(`Desktop frame injection rejected non-http script path \"${normalizedPath}\".`);
+  }
+
+  if (injectUrl.origin !== baseOrigin) {
+    throw new Error(`Desktop frame injection rejected cross-origin script path \"${normalizedPath}\".`);
+  }
+
+  const decodedPathname = decodeURIComponent(injectUrl.pathname);
+  if (!decodedPathname.startsWith("/mod/")) {
+    throw new Error(`Desktop frame injection rejected non-module script path \"${normalizedPath}\".`);
+  }
+
+  if (
+    decodedPathname.includes("\\")
+    || decodedPathname.includes("/../")
+    || decodedPathname.endsWith("/..")
+    || decodedPathname.includes("/./")
+    || decodedPathname.endsWith("/.")
+  ) {
+    throw new Error(`Desktop frame injection rejected unsafe script path \"${normalizedPath}\".`);
+  }
+
+  if (injectUrl.username || injectUrl.password || injectUrl.search || injectUrl.hash) {
+    throw new Error(`Desktop frame injection rejected decorated script path \"${normalizedPath}\".`);
+  }
+
+  return injectUrl;
+}
+
+async function fetchDesktopFrameInjectScript(currentSession, baseOrigin, injectPath) {
+  const injectUrl = resolveDesktopFrameInjectUrl(baseOrigin, injectPath);
+  const response = await currentSession.fetch(injectUrl.href);
+  if (!response.ok) {
+    throw new Error(`Desktop frame injection could not load ${injectUrl.href} (${response.status}).`);
+  }
+
+  return {
+    scriptPath: injectUrl.pathname,
+    scriptSource: await response.text(),
+    scriptUrl: injectUrl.href
+  };
+}
+
+function buildDesktopFrameInjectionSource(entry, script) {
+  const bootstrap = JSON.stringify({
+    iframeId: entry.iframeId,
+    scriptPath: script.scriptPath,
+    scriptUrl: script.scriptUrl
+  });
+  const sourceUrl = String(script.scriptUrl || script.scriptPath || "space-desktop-injected-script").replace(/[\r\n]+/gu, " ");
+
+  return `(() => {\n  globalThis.__spaceBrowserFrameInjectBootstrap__ = ${bootstrap};\n  try {\n${script.scriptSource}\n  } finally {\n    delete globalThis.__spaceBrowserFrameInjectBootstrap__;\n  }\n})();\n//# sourceURL=${sourceUrl}`;
+}
+
+async function injectDesktopFrameScript(frame, entry, webContents) {
+  if (!app.isPackaged || !frame || frame.isDestroyed?.()) {
+    return;
+  }
+
+  const currentSession = webContents?.session;
+  if (!currentSession || typeof currentSession.fetch !== "function") {
+    throw new Error("Desktop frame injection requires a live renderer session.");
+  }
+
+  const baseOrigin = getDesktopFrameInjectBaseOrigin(frame, webContents);
+  const script = await fetchDesktopFrameInjectScript(currentSession, baseOrigin, entry.injectPath);
+  await frame.executeJavaScript(buildDesktopFrameInjectionSource(entry, script), true);
+}
+
+function maybeInjectDesktopFrame(frame, webContents) {
+  if (!app.isPackaged || !frame || !webContents || frame.parent == null) {
+    return;
+  }
+
+  const entry = getDesktopFrameInjectionEntry(webContents.id, frame.name);
+  if (!entry) {
+    return;
+  }
+
+  void injectDesktopFrameScript(frame, entry, webContents).catch((error) => {
+    console.error(`[space-desktop/frame-inject] Failed to inject ${entry.injectPath} into frame \"${entry.frameName}\".`, error);
+  });
+}
+
+function injectRegisteredDesktopFrames(webContents) {
+  if (!app.isPackaged || !webContents || webContents.isDestroyed?.()) {
+    return;
+  }
+
+  const registry = desktopFrameInjectionRegistry.get(webContents.id);
+  if (!registry || !registry.size) {
+    return;
+  }
+
+  const mainFrame = webContents.mainFrame;
+  if (!mainFrame || mainFrame.isDestroyed?.()) {
+    return;
+  }
+
+  mainFrame.framesInSubtree.forEach((frame) => {
+    if (frame === mainFrame) {
+      return;
+    }
+
+    maybeInjectDesktopFrame(frame, webContents);
+  });
+}
 
 function createDesktopRuntimeParamOverrides() {
   const overrides = {};
@@ -460,7 +655,7 @@ async function downloadDesktopUpdate() {
   return desktopUpdateDownloadPromise;
 }
 
-function installDesktopUpdate() {
+async function installDesktopUpdate() {
   if (!shouldEnableDesktopAutoUpdate()) {
     return { ok: false, reason: "unavailable" };
   }
@@ -481,11 +676,27 @@ function installDesktopUpdate() {
     message: "",
     progress: null
   });
+
+  // Windows updates are more reliable when the embedded server runtime is fully closed
+  // before NSIS takes over, and the explicit install handoff stays on the silent path.
+  const useSilentWindowsInstall = process.platform === "win32";
+
+  try {
+    await stopServerRuntime();
+  } catch (error) {
+    const formattedError = reportDesktopUpdateFailure("Desktop update install preparation failed.", error);
+    return {
+      ok: false,
+      reason: "error",
+      message: formattedError.summary
+    };
+  }
+
   // Electron emits before-quit after updater-triggered window close events on macOS,
   // so the host must mark updater restarts as real quits before calling quitAndInstall().
   prepareDesktopForQuit();
   setImmediate(() => {
-    autoUpdater.quitAndInstall();
+    autoUpdater.quitAndInstall(useSilentWindowsInstall, useSilentWindowsInstall);
   });
 
   return { ok: true, status: "installing", version: desktopUpdateState.version || "" };
@@ -502,7 +713,7 @@ function configureDesktopAutoUpdate() {
   }
 
   autoUpdater.autoDownload = false;
-  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.autoInstallOnAppQuit = false;
   autoUpdater.disableDifferentialDownload = true;
   autoUpdater.logger = console;
 
@@ -603,6 +814,25 @@ function createWindow() {
     }
   });
 
+  registerDesktopFramePreload(mainWindow.webContents);
+
+  const mainWebContentsId = mainWindow.webContents.id;
+  mainWindow.webContents.once("destroyed", () => {
+    clearDesktopFrameInjectionRegistry(mainWebContentsId);
+  });
+  mainWindow.webContents.on("did-frame-finish-load", (_event, isMainFrame, frameProcessId, frameRoutingId) => {
+    if (isMainFrame) {
+      return;
+    }
+
+    const frame = webFrameMain.fromId(frameProcessId, frameRoutingId);
+    if (!frame) {
+      return;
+    }
+
+    maybeInjectDesktopFrame(frame, mainWindow?.webContents);
+  });
+
   desktopPageTitle = BASE_WINDOW_TITLE;
   refreshDesktopWindowTitle();
 
@@ -636,13 +866,29 @@ function createWindow() {
   return mainWindow;
 }
 
-function stopServerRuntime() {
+async function stopServerRuntime() {
   if (!serverRuntime) {
     return;
   }
 
   const runtime = serverRuntime;
   serverRuntime = null;
+
+  if (typeof runtime.close === "function") {
+    try {
+      await runtime.close();
+      return;
+    } catch (error) {
+      logDesktopUpdateEvent("Desktop server runtime close failed; falling back to best-effort shutdown.", {
+        level: "warn",
+        error
+      });
+    }
+  }
+
+  if (runtime.jobRunner && typeof runtime.jobRunner.stop === "function") {
+    runtime.jobRunner.stop();
+  }
 
   if (runtime.watchdog && typeof runtime.watchdog.stop === "function") {
     runtime.watchdog.stop();
@@ -653,7 +899,11 @@ function stopServerRuntime() {
   }
 
   if (runtime.server && runtime.server.listening) {
-    runtime.server.close();
+    await new Promise((resolve) => {
+      runtime.server.close(() => {
+        resolve();
+      });
+    });
   }
 }
 
@@ -685,13 +935,17 @@ app.on("window-all-closed", () => {
 });
 
 ipcMain.handle("space-desktop:get-runtime-info", () => getDesktopRuntimeInfo());
+ipcMain.on(DESKTOP_FRAME_INJECT_REGISTER_CHANNEL, (event, payload = {}) => {
+  replaceDesktopFrameInjectionRegistry(event.sender.id, payload.frames);
+  injectRegisteredDesktopFrames(event.sender);
+});
 ipcMain.handle("space-desktop:check-for-updates", () => checkForDesktopUpdates({ userInitiated: true }));
 ipcMain.handle("space-desktop:download-update", () => downloadDesktopUpdate());
 ipcMain.handle("space-desktop:install-update", () => installDesktopUpdate());
 
 app.on("before-quit", () => {
   prepareDesktopForQuit();
-  stopServerRuntime();
+  void stopServerRuntime();
 });
 
 startDesktop().catch((error) => {

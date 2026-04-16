@@ -103,6 +103,7 @@ App docs:
 - `/app/L0/_all/mod/_core/user/AGENTS.md`
 - `/app/L0/_all/mod/_core/user_crypto/AGENTS.md`
 - `/app/L0/_all/mod/_core/visual/AGENTS.md`
+- `/app/L0/_all/mod/_core/web_browsing/AGENTS.md`
 - `/app/L0/_all/mod/_core/webllm/AGENTS.md`
 
 Commands docs:

@@ -23,7 +23,7 @@ Examples:
 
 - The onscreen prompt catalog lists only top-level skills from `ext/skills/*/SKILL.md`.
 - Nested skills are not listed by default.
-- Both the catalog and explicit `space.skills.load(...)` calls evaluate the current document's `<x-skill-context>` tags before a skill is eligible.
+- Both the catalog and explicit `space.skills.load(...)` calls evaluate the current document's `<x-context>` tags before a skill is eligible.
 - `metadata.when` may be `true` or a `{ tags: [...] }` condition; `metadata.when.tags` requires all listed tags before the skill becomes catalog-loadable.
 - `metadata.placement` accepts `system`, `transient`, or `history`; ordinary skills default missing or invalid placement to `history`, but auto-loaded skills may not resolve to `history`, so missing or invalid placement and explicit `history` all fall back to `system` unless the skill explicitly sets `transient`.
 - Only top-level `ext/skills/*/SKILL.md` skills can auto-load through prompt discovery. Nested skills stay explicit-load-only routing targets even if they define `metadata.loaded`.
@@ -46,7 +46,9 @@ Examples:
 ## Skill Content Rules
 
 - Start with frontmatter containing `name`, `description`, and optional runtime-owned `metadata`.
-- Use `<x-skill-context>` tags in mounted DOM when a module needs to expose live skill-filter state such as `onscreen`, `admin`, `route:spaces`, or `space:open`.
+- Framework bootstrap already exports exactly one runtime context: `data-runtime="browser"` in normal web sessions or `data-runtime="app"` in the packaged desktop runtime, plus the derived tag `runtime-browser` or `runtime-app`.
+- Import `/mod/_core/framework/js/context.js` when code needs to read the current live `<x-context>` set directly; use `getTags(...)` for tag collection, `getAttributeValues("data-runtime", ...)` for raw runtime reads, and the other helpers for broader context inspection.
+- Use `<x-context>` tags in mounted DOM when a module needs to expose additional live skill-filter state such as `onscreen`, `admin`, `route:spaces`, or `space:open`.
 - Use `metadata.when.tags` when the skill should exist only in those live contexts.
 - Use `metadata.loaded` only when the skill should be auto-injected without an explicit `space.skills.load(...)` call.
 - Use `metadata.placement: system` when the skill body is durable instruction, `metadata.placement: transient` when it should live in the mutable transient block, and let the default `history` placement stand only for ordinary non-auto-loaded skills that should behave like normal conversation context.

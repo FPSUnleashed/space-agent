@@ -40,7 +40,7 @@
   </tr>
   <tr>
     <td align="center" valign="top" width="50%">
-      <img src="./packaging/resources/icons/source/space-agent-icon-256.webp" alt="Space Agent app icon" width="120" />
+      <img src="packaging/resources/icons/source/space-agent-icon-256.webp" alt="Space Agent app icon" width="120" />
     </td>
     <td valign="top" width="50%">
       <strong>The agent lives in the frontend runtime</strong><br />
@@ -63,7 +63,7 @@
       The core stays small. Most of Space Agent is made of modular pieces that can be added, removed, or swapped cleanly instead of being welded into one rigid app.
     </td>
     <td align="center" valign="top" width="50%">
-      <img src="./app/L0/_all/mod/_core/onscreen_agent/res/helmet_no_bg_256.webp" alt="Space Agent helmet" width="150" />
+      <img src="app/L0/_all/mod/_core/visual/res/chat/admin/helmet_no_bg_256.webp" alt="Space Agent helmet" height="112" />
     </td>
   </tr>
   <tr>
@@ -78,7 +78,7 @@
   </tr>
   <tr>
     <td align="center" valign="top" width="50%">
-      <img src="./app/L0/_all/mod/_core/admin/res/astronaut_no_bg.webp" alt="Space Agent astronaut" width="170" />
+      <img src="app/L0/_all/mod/_core/visual/res/engineer/astronaut_red_512h.webp" alt="Space Agent astronaut" height="148" />
     </td>
     <td valign="top" width="50%">
       <strong>Persistent admin and time travel</strong><br />

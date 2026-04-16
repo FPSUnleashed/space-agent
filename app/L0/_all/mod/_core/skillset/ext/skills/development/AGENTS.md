@@ -66,8 +66,8 @@ Source-doc mirror map:
 - `extensions-components/SKILL.md` must keep extension lookup batching guidance current, including the HTML-only frontend constant `HTML_EXTENSIONS_LOAD_BATCH_WAIT_MS`, and must keep delayed-target `x-inject` guidance current for route-owned markup that targets shell seams
 - `frontend-runtime/SKILL.md` and `extensions-components/SKILL.md` must keep the framework-managed `_core/framework/head/end` seam aligned with the imperative `_core/framework/initializer.js/initialize/end` fallback guidance
 - `skills/SKILL.md` should tell authors to prefer small skill-local helper imports inside the owning skill folder over long inlined browser scripts when that keeps skill text shorter and more stable
-- `skills/SKILL.md` must keep the shared skill metadata rules current, including `metadata.when`, `metadata.loaded`, `metadata.placement`, and the live `<x-skill-context>` tag contract
-- `skills/SKILL.md` must keep the first-party tag examples current: the overlay emits `onscreen`, the admin shell emits `admin`, and feature modules may add route or state tags such as `route:<current-path>` or `space:open`
+- `skills/SKILL.md` must keep the shared skill metadata rules current, including `metadata.when`, `metadata.loaded`, `metadata.placement`, and the live `<x-context>` tag contract
+- `skills/SKILL.md` must keep the first-party tag examples current: framework bootstrap emits exactly one runtime context with `data-runtime="browser"` or `data-runtime="app"` and the derived tags `runtime-browser` or `runtime-app`, the overlay emits `onscreen`, the admin shell emits `admin`, and feature modules may add route or state tags such as `route:<current-path>` or `space:open`
 - prompt-facing skill text must stay token-budgeted; keep catalog-facing descriptions terse and keep auto-loaded skill guidance compact
 - when a complex area grows, add another nested skill instead of bloating the router skill
 - if a mirrored contract changes in a source doc, update the affected development skills in the same session even if this subtree itself was not directly edited

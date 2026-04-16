@@ -1,7 +1,7 @@
 import * as execution from "/mod/_core/admin/views/agent/execution.js";
 import { createAgentThreadView } from "/mod/_core/visual/conversation/thread-view.js";
 
-const ADMIN_AGENT_ASTRONAUT_PATH = "/mod/_core/admin/res/astronaut_no_bg.webp";
+const ADMIN_AGENT_ASTRONAUT_PATH = "/mod/_core/visual/res/chat/admin/astronaut_no_bg.webp";
 
 function createAdminEmptyState() {
   const emptyState = document.createElement("div");
@@ -34,7 +34,7 @@ function createAdminEmptyState() {
 }
 
 const threadView = createAgentThreadView({
-  assistantAvatarPath: "/mod/_core/admin/res/helmet_no_bg_256.webp",
+  assistantAvatarPath: "/mod/_core/visual/res/chat/admin/helmet_no_bg_256.webp",
   autoResizeMaxHeight: 220,
   createEmptyState: createAdminEmptyState,
   execution,

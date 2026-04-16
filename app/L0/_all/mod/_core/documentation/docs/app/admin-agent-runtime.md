@@ -29,13 +29,15 @@ It does not depend on `_core/onscreen_agent` internals.
 
 The shared thread view keeps settled admin assistant replies markdown-rendered, but submitted user bubbles stay plain pre-wrapped text so typed blank lines display literally instead of expanding into markdown paragraph gaps.
 That shared history styling resets rendered markdown bubbles back to normal white-space so parser formatting newlines between tags do not show up as visible blank lines, and it also collapses direct block margins inside list items so loose markdown bullets do not render blank-line-sized gaps between entries.
+The admin agent's empty-state astronaut, thread avatar helmet, and admin-shell launcher avatar now all resolve through the shared authenticated-app artwork folder at `/mod/_core/visual/res/chat/admin/`. Repo-owned app image assets should stay under `_core/visual/res/`, not under `_core/admin/`.
 
 ## Skill Discovery
 
 The admin agent now uses the same shared browser-side skill helper as the onscreen agent:
 
 - top-level catalog entries come from readable `mod/*/*/ext/skills/*/SKILL.md`
-- the shared helper reads the current document's `<x-skill-context>` tags before deciding which skills are eligible
+- the shared helper reads the current document's `<x-context>` tags before deciding which skills are eligible
+- framework bootstrap also contributes exactly one runtime context before that read: `data-runtime="browser"` for normal web sessions or `data-runtime="app"` in the packaged desktop runtime, plus the derived tag `runtime-browser` or `runtime-app`
 - the admin shell exports `admin`, so admin-owned skills may require `metadata.when.tags: [admin]`
 - `metadata.when` and `metadata.loaded` both accept either `true` or a `{ tags: [...] }` condition, so admin skills use the same live page-tag matcher for catalog visibility and automatic prompt inclusion
 - `metadata.loaded` works here too, so the admin prompt can append the matching auto-loaded skill context without hardcoding specific skill ids; those auto-loaded skills may resolve only to `system` or `transient`, with `system` as the fallback
@@ -104,7 +106,7 @@ Instead:
 - saving the config no longer requires the model to already exist in that saved-model list; admin now kicks off background load for the configured local model on save and on page init when local mode is already active, while the first admin send still acts as the fallback load trigger if preparation has not finished yet
 - links out to `/#/huggingface` for fuller testing-chat work, not as the only load path
 
-This means the admin agent reuses the same browser-local assets, worker state, and component contracts as the dedicated Local LLM testing route, while still keeping admin prompt assembly, history, and provider-selection persistence local to `_core/admin/views/agent/`.
+This means the admin agent reuses the same shared visual assets, browser-local worker state, and component contracts as the dedicated Local LLM testing route, while still keeping admin prompt assembly, history, and provider-selection persistence local to `_core/admin/views/agent/`.
 
 ## Practical Behavior
 

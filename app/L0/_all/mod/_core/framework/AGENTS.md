@@ -16,6 +16,7 @@ This module owns:
 - `js/initializer.js`: extensible shared bootstrap step that runs before Alpine startup
 - `js/runtime.js`: runtime installation onto `globalThis.space`
 - `js/new-window.js`: framework-wide same-origin `_blank` handling that lets app-opened new windows skip the `/enter` launcher guard while manual browser-opened windows still route through `/enter`
+- `js/context.js`: generic `<x-context>` collection helpers plus the framework-owned runtime sync that injects one hidden `data-runtime="browser|app"` context element with a derived `runtime-browser` or `runtime-app` tag on framework-backed pages
 - `js/markdown-frontmatter.js`: markdown frontmatter parsing plus safe markdown-to-DOM rendering helpers
 - `js/yaml-lite.js`: project-owned lightweight YAML parser and serializer shared directly by browser runtime helpers, server modules, and agent-surface param parsers
 - `js/server-config.js`: injected page-meta parsing for frontend-exposed backend runtime parameters
@@ -27,7 +28,7 @@ This module owns:
 - Alpine directives and magic helpers registered during bootstrap, including delayed-target `x-inject`
 - shared browser API helpers in `js/api-client.js`, `js/api.js`, `js/fetch-proxy.js`, `js/download.js`, and `js/proxy-url.js`
 - small shared parsing and utility helpers such as markdown frontmatter, the browser YAML wrapper, and token counting
-- shared framework CSS and icon font assets under `css/`, including non-visual helper-tag defaults such as hidden `x-skill-context` elements
+- shared framework CSS and icon font assets under `css/`, including non-visual helper-tag defaults such as hidden `x-context` elements
 
 ## Boot And Runtime Contract
 
@@ -37,7 +38,7 @@ Current boot order:
 
 1. `initFw.js` imports `extensions.js` first so `space.extend` exists before other framework modules expose seams and so the framework-managed head HTML seam is present before the initial extension scan.
 2. `initializeRuntime(...)` publishes the shared runtime onto `globalThis.space`.
-3. `initializer.initialize()` runs the first extensible framework bootstrap step and installs the framework new-window handler.
+3. `initializer.initialize()` runs the first extensible framework bootstrap step, installs the framework new-window handler, and injects the framework-owned runtime context tag.
 4. Alpine and framework support modules are loaded.
 5. Framework directives and magic helpers are registered.
 
@@ -68,6 +69,12 @@ Current API helper contract:
 - framework-managed external `fetch(...)` calls and `space.fetchExternal(...)` try the browser's direct request first; when a direct cross-origin attempt fails and the `/api/proxy` retry succeeds, the frontend remembers that origin for the rest of the runtime and routes later requests for the same origin through the backend immediately
 - same-origin `fetch(...)` calls made after the fetch proxy is installed automatically carry the highest observed `Space-State-Version`, and when the router returns its bounded retryable sync `503` with `Retry-After: 0`, `fetch-proxy.js` retries the request a few times before surfacing the failure to callers
 - frontend modules and widgets must not hardcode third-party CORS proxy services; use direct `fetch(...)` or `space.fetchExternal(...)` for remote reads and reserve `space.proxy.buildUrl(...)` for cases that need a same-origin proxied URL string
+
+Current context helper contract:
+
+- `js/context.js` owns generic `<x-context>` discovery for the frontend, not just skill filtering
+- stable exports are `getContexts(root?)`, `getAttributeValues(name, root?)`, `getTags(root?)`, and `getContents(root?)` for reading live mounted context elements
+- framework bootstrap uses `resolveRuntimeContext(...)` plus `syncRuntimeContext(...)` to keep exactly one hidden runtime-owned `<x-context>` element mounted with `data-runtime="browser"` or `data-runtime="app"` and `data-tags="runtime-browser"` or `data-tags="runtime-app"`
 
 Rules:
 
@@ -119,7 +126,7 @@ Rules:
 - keep `ext/html/` adapter files thin and mount real components from owning modules
 - keep `ext/js/` hook files focused on hook behavior instead of turning them into alternate feature entry points
 - keep components declarative and import feature stores explicitly
-- non-visual helper tags such as `<x-skill-context>` may live in mounted DOM for module-owned runtime discovery; framework CSS should keep them out of layout, but the owning module still defines the helper's semantics
+- non-visual helper tags such as `<x-context>` may live in mounted DOM for module-owned runtime discovery; framework CSS should keep them out of layout, and framework bootstrap now owns the one hidden runtime context element with `data-runtime="browser|app"` plus derived `runtime-browser` or `runtime-app` tags, while other tags remain owned by the emitting module
 - if a hook or component behavior becomes feature-specific, move it out of framework
 
 ## Development Guidance

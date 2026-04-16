@@ -78,6 +78,9 @@
       "target": [
         "AppImage"
       ]
+    },
+    "nsis": {
+      "createDesktopShortcut": "always"
     }
   },
   "nodejsformobile": {

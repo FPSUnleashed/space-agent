@@ -60,9 +60,9 @@ Prompt construction includes two skill-related sections:
 - the top-level skill catalog built from readable `mod/*/*/ext/skills/*/SKILL.md` files
 - the auto-loaded skill context for readable top-level `ext/skills/*/SKILL.md` files whose `metadata.loaded` condition currently passes
 
-Both sections are filtered by the current document's live `<x-skill-context>` tags before prompt assembly.
+Both sections are filtered by the current document's live `<x-context>` tags before prompt assembly.
 
-Both `metadata.when` and `metadata.loaded` accept either `true` or a `{ tags: [...] }` condition. The shared helper reads those live tags every time it builds the catalog, resolves an explicit skill load, or assembles auto-loaded prompt context. Auto-loaded prompt discovery is top-level only, and auto-loaded skills may land only in `system` or `transient`, so their missing or invalid placement and explicit `history` all fall back to `system` unless they explicitly set `transient`.
+Both `metadata.when` and `metadata.loaded` accept either `true` or a `{ tags: [...] }` condition. The shared helper reads those live tags every time it builds the catalog, resolves an explicit skill load, or assembles auto-loaded prompt context. Framework bootstrap contributes exactly one runtime context before that evaluation: `data-runtime="browser"` on normal web sessions or `data-runtime="app"` in the packaged desktop runtime, plus the derived tag `runtime-browser` or `runtime-app`. Auto-loaded prompt discovery is top-level only, and auto-loaded skills may land only in `system` or `transient`, so their missing or invalid placement and explicit `history` all fall back to `system` unless they explicitly set `transient`.
 
 Top-level skill catalog rows use the compact shape:
 
@@ -99,6 +99,7 @@ The transport layer uses one `OnscreenAgentLlmClient` superclass with provider s
 
 - `OnscreenAgentApiLlmClient` sends the prepared request to an OpenAI-compatible chat-completions endpoint and normalizes standard JSON or SSE streams into text deltas plus completion metadata
 - `OnscreenAgentLocalLlmClient` sends the prepared message payload through the shared `_core/huggingface/manager.js` browser runtime, using the configured Hugging Face repo id and dtype
+- local sends reuse the same final folded transport messages that the API path would send upstream, while the prompt-history tools still expose the richer pre-fold prepared payload with `_____framework`, `_____user`, and trailing `_____transient` boundaries
 
 When `llm_provider` is `local`, `llm.js` builds the system section from `LOCAL_ONSCREEN_AGENT_SYSTEM_PROMPT` plus custom instructions instead of the full firmware prompt and skill catalog. The same prepared-prompt machinery still carries examples when present, live history, compacted history, and transient context.
 

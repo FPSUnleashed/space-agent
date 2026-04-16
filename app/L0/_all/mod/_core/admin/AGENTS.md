@@ -57,7 +57,6 @@ This module owns:
 - `views/files/`: admin Files tab adapter that mounts `_core/file_explorer`
 - `views/time_travel/`: admin Time Travel tab adapter that mounts `_core/time_travel`
 - `views/modules/`: firmware-backed modules panel
-- `res/`: admin-local visual assets
 - `ext/skills/`: admin-owned skill files exposed through the shared module skill discovery contract
 
 Inactive area:
@@ -71,7 +70,7 @@ The admin module is mounted only through the page-specific `page/admin/body/star
 Current shell responsibilities:
 
 - `views/shell/shell.html` owns the split two-pane layout
-- `views/shell/shell.html` also exports the admin-page skill-context tag through `<x-skill-context tag="admin">`
+- `views/shell/shell.html` also exports the admin-page context tag through `<x-context data-tags="admin">`
 - `views/shell/shell.html` mirrors the routed `[id="_core/onscreen_menu/bar_start"]` inject host above admin tab content so embedded routed surfaces can reuse their existing injected controls inside `/admin`
 - that mirrored inject host must collapse completely when no active tab contributes controls, so the active admin panel still stretches to full height and the admin-agent composer stays pinned to the pane bottom while its thread scrolls above
 - `views/shell/shell.js` owns split sizing, drag-resize behavior, orientation-dependent layout, `?url=` startup handling, and leave-admin navigation back into the current iframe URL
@@ -101,7 +100,7 @@ Admin agent skills are discovered through the same shared browser-side skill hel
 Current rules:
 
 - `views/agent/skills.js` discovers top-level skill files through the shared `ext/skills` contract with an explicit `maxLayer=0` lookup
-- live page-owned `<x-skill-context>` tags still filter that catalog the same way they do for the onscreen agent; the admin shell exports `admin`, and individual skills may use `metadata.when` and `metadata.loaded` as either `true` or `{ tags: [...] }` conditions plus `metadata.placement`
+- live page-owned `<x-context>` tags still filter that catalog the same way they do for the onscreen agent; the admin shell exports `admin`, and individual skills may use `metadata.when` and `metadata.loaded` as either `true` or `{ tags: [...] }` conditions plus `metadata.placement`
 - the admin agent prompt receives a compact catalog of those top-level skills plus the matching auto-loaded system or transient skill context for currently eligible `metadata.loaded` skills; auto-loaded skills do not enter history and fall back to `system` unless they explicitly set `transient`
 - the actual skill content is loaded on demand through `space.admin.loadSkill(name)`, with `history` placement entering ordinary execution-output history and `system` or `transient` placement registering runtime prompt context plus the short load-result text
 - keep skill folders stable and top-level if they should appear in the catalog
@@ -110,6 +109,6 @@ Current rules:
 ## Development Guidance
 
 - keep admin UI logic inside this module; do not spread admin-only behavior into unrelated modules
-- keep admin assets local under `admin/res/` instead of borrowing from unrelated feature modules
+- keep repo-owned app image assets under `_core/visual/res/`; do not store admin-module image files under `_core/admin/`
 - keep the admin shell firmware-backed; do not introduce writable-layer dependencies for the admin UI contract itself
 - if you add tabs, change the shell seam, change the app-menu admin handoff, or change how skills are discovered, update this file and `/app/AGENTS.md`

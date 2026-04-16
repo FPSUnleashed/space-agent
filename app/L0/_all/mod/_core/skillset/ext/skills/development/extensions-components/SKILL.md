@@ -3,7 +3,7 @@ name: Extensions And Components
 description: Use HTML adapters, JS hook seams, and component loading correctly in the layered module system.
 ---
 
-Use this skill when the task needs `ext/html/`, `ext/js/`, `x-extension`, `x-component`, `x-skill-context`, or layered override behavior.
+Use this skill when the task needs `ext/html/`, `ext/js/`, `x-extension`, `x-component`, `x-context`, or layered override behavior.
 
 ## HTML Extension Rules
 
@@ -50,12 +50,14 @@ Example:
 - Keep component HTML declarative and bind behavior through stores.
 - Import the owning store module in the component that owns the feature, not in an unrelated parent shell.
 
-## Skill Context Helper Rules
+## Context Helper Rules
 
-- Modules may export live skill-filter tags with hidden `<x-skill-context>` elements anywhere in mounted DOM.
-- Set one tag with `tag="..."` or multiple tags with `tags="a b c"`.
-- Alpine-bound attributes on `<x-skill-context>` are the normal way to keep tags synced with route or store state.
-- Shared skill discovery reads those tags directly from the current document each time it builds the catalog, auto-loaded skill context, or an explicit skill load.
+- Framework bootstrap also injects one hidden runtime `<x-context>` with `data-runtime="browser"` on normal web sessions or `data-runtime="app"` in the packaged desktop runtime; that same element also exposes `runtime-browser` or `runtime-app` through `data-tags`.
+- Modules may export additional live skill-filter tags with hidden `<x-context>` elements anywhere in mounted DOM.
+- Set one or more tags with `data-tags="a, b, c"`.
+- Alpine-bound attributes on `<x-context>` are the normal way to keep tags synced with route or store state.
+- Import `/mod/_core/framework/js/context.js` when code needs to inspect current `<x-context>` elements directly; the stable helpers are `getContexts(...)`, `getAttributeValues(...)`, `getTags(...)`, and `getContents(...)`.
+- Shared skill discovery reads those tags through that framework helper each time it builds the catalog, auto-loaded skill context, or an explicit skill load.
 
 ## Layered Override Behavior
 

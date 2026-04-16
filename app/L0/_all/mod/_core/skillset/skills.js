@@ -1,7 +1,8 @@
+import { getTags } from "../framework/js/context.js";
+
 export const TOP_LEVEL_SKILL_FILE_PATTERN = "mod/*/*/ext/skills/*/SKILL.md";
 export const SKILL_FILE_NAME = "SKILL.md";
 export const SKILLS_ROOT_SEGMENT = "/ext/skills/";
-export const SKILL_CONTEXT_SELECTOR = "x-skill-context";
 export const SKILL_PLACEMENT = Object.freeze({
   HISTORY: "history",
   SYSTEM: "system",
@@ -182,7 +183,7 @@ function normalizeSkillLoadedConfig(config) {
 
 function createContextTagSet(contextTags) {
   return new Set(
-    Array.isArray(contextTags) && contextTags.length ? normalizeSkillTags(contextTags) : collectSkillContextTags()
+    Array.isArray(contextTags) && contextTags.length ? normalizeSkillTags(contextTags) : normalizeSkillTags(getTags())
   );
 }
 
@@ -212,26 +213,6 @@ function isSkillAutoLoadedForContext(skill, contextTagSet) {
   }
 
   return matchesSkillCondition(skill.loaded, contextTagSet);
-}
-
-export function collectSkillContextTags(root = globalThis.document) {
-  if (!root?.querySelectorAll) {
-    return [];
-  }
-
-  const uniqueTags = new Set();
-  const contextElements = Array.from(root.querySelectorAll(SKILL_CONTEXT_SELECTOR));
-
-  contextElements.forEach((element) => {
-    const tagValues = normalizeSkillTags([
-      element.getAttribute("tag"),
-      element.getAttribute("tags")
-    ]);
-
-    tagValues.forEach((tag) => uniqueTags.add(tag));
-  });
-
-  return [...uniqueTags].sort();
 }
 
 export function parseDiscoveredSkillFile(filePath) {

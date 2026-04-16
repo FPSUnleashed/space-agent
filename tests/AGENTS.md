@@ -40,6 +40,7 @@ This scope owns:
 - `extensions_load_request_shape_test.mjs`: focused frontend-loader request-shape coverage for top-level `maxLayer`, ordered grouped `patterns`, and grouped `extensions_load` responses without synthetic transport keys
 - `file_api_request_context_test.mjs`: live HTTP regression coverage for file endpoints that depend on router-supplied `headers` and `requestUrl` request-context fields
 - `file_write_operations_test.mjs`: focused server-side coverage for `file_write` append, prepend, line insert, pattern insert, and invalid insert-anchor behavior
+- `framework_context_test.mjs`: focused frontend-bootstrap coverage for generic `x-context` helpers, the framework-owned `data-runtime="browser|app"` context element, the derived `runtime-browser` or `runtime-app` tags, and the shared tag collection that skills consume
 - `github_auth_test.mjs`: focused coverage for GitHub token resolution via `SPACE_GITHUB_TOKEN`, no-auth behavior when the token is absent, and supervisor Git command auth-header injection
 - `module_discovery_state_test.mjs`: focused coverage for state-backed module inheritance, extension lookup, and module-management visibility across firmware `L0`, group `L1`, self `L2`, and admin cross-user `L2` access
 - `password_change_test.mjs`: live HTTP coverage for authenticated self-service password rotation, including current-password validation, session clearing, old-password rejection, replacement-password login, and single-user-mode rejection
@@ -52,6 +53,7 @@ This scope owns:
 - standalone repo-level verification scripts such as `yaml_lite_test.mjs`
 - `project_version_test.mjs`: focused helper coverage for package-version display tags and project-version fallback behavior used by the CLI and page shells
 - `onscreen_agent_prompt_shape_test.mjs`: focused overlay-agent prompt-shaping coverage for attachment block splitting and the example-to-live-history reset boundary
+- `huggingface_prompt_shape_test.mjs`: focused local-LLM prompt-shaping coverage for the Hugging Face API-style fallback prompt format and the onscreen local-client folded-transport message contract
 - shared expectations for test config, fixtures, scripted execution, and saved evaluation results
 
 ## Local Contracts

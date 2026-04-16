@@ -19,6 +19,7 @@ This doc covers how browser code is delivered and composed.
 - `app/L0/_all/mod/_core/time_travel/AGENTS.md`
 - `app/L0/_all/mod/_core/user/AGENTS.md`
 - `app/L0/_all/mod/_core/user_crypto/AGENTS.md`
+- `app/L0/_all/mod/_core/web_browsing/AGENTS.md`
 - `server/lib/customware/AGENTS.md`
 - `server/api/AGENTS.md`
 
@@ -103,6 +104,8 @@ Current first-party shell extension example:
 - `_core/dashboard` now defines one route-owned injected wrapper in that same left header container and exposes ordered `_core/dashboard/topbar_primary` and `_core/dashboard/topbar_secondary` seams inside it, so dashboard-only controls such as the spaces create action or the welcome restore toggle stay route-scoped without teaching `_core/onscreen_menu` about dashboard features
 - `_core/dashboard_welcome` uses `_core/dashboard/content_start` for a compact welcome panel above the spaces launcher; that panel keeps a `Resources` row of outbound project or community links above a `Demo Spaces` row of bundled example-space installers, while the hide-state restore action lives separately in `_core/dashboard/topbar_secondary`
 - `_core/agent`, `_core/user`, `_core/file_explorer`, `_core/time_travel`, and `_core/admin` each contribute their own routed header-menu dropdown item through `_core/onscreen_menu/items` with `data-order` values `100`, `150`, `200`, `300`, and `400` instead of being hardcoded into the menu shell
+- `_core/web_browsing` contributes a non-route Browser action through `_core/onscreen_menu/items` at `data-order="250"`, so the routed menu can open its floating window without changing the current route
+- `_core/web_browsing` also uses `page/router/overlay/end` for a router-owned floating tool surface instead of a routed page: it mounts a draggable, minimizable, resizable iframe window there, keeps its geometry browser-local, gives the iframe the stable id `browser-1`, loads the placeholder `/mod/_core/web_browsing/browser-frame.html`, and ships a request-response bridge pair through `/mod/_core/web_browsing/browser-frame-bridge.js` on the host side plus `/mod/_core/web_browsing/browser-frame-inject.js` on the iframe side; those bridge envelopes are prefixed by `space.web_browsing.browser_frame`, always carry `type`, JSON-safe `payload`, and a `requestId` for request or response messages, include built-in `ping` and `dom` request handlers on the injected side, stay inactive in normal browser sessions, and become packaged-desktop-active only when Electron's frame preload validates and evaluates the iframe's same-origin `/mod/...` inject path
 - `_core/spaces` now defines its current-space control cluster directly inside the spaces route and injects it into `[id="_core/onscreen_menu/bar_start"]` through `x-inject`; that keeps the controls route-owned so they are removed when the route unmounts, while still keeping Back, the space-title toggle, Rearrange, and a confirmed clear-all-widgets trash action together in shared shell chrome, with the metadata editor popover anchored to the title button instead of owning a separate fixed page overlay
 - `_core/time_travel` keeps its page title copy inside the routed page but injects its route-owned Refresh and repository-picker controls into `[id="_core/onscreen_menu/bar_start"]` through `x-inject`, keeping those controls in shared shell chrome without turning them into persistent shell extensions
 - the `_core/admin` shell keeps its admin tabs in the left-pane topbar, mirrors that same `[id="_core/onscreen_menu/bar_start"]` inject host above active admin content so embedded routed surfaces can reuse their existing injected controls, collapses that mirrored host fully when no active tab is using it so the live admin panel keeps full height, and ends the topbar with a leave-admin icon button that returns to the current iframe URL
@@ -161,23 +164,31 @@ Agent-facing helper workflow:
 - `resolvePanelRoutePath(target)` normalizes those target forms into the router route path that `space.router` expects
 - `createPanelHref(target)` and `goToPanel(target)` then build or navigate the routed destination without forcing the caller to duplicate route normalization rules
 
-## `<x-skill-context>`
+## `<x-context>`
 
-Modules may also export live skill-filter tags with hidden helper elements:
+Modules may also export live context tags with hidden helper elements:
 
 ```html
-<x-skill-context tag="onscreen"></x-skill-context>
-<x-skill-context tag="admin"></x-skill-context>
-<x-skill-context :tags="$store.router.current?.path ? `route:${$store.router.current.path}` : ''"></x-skill-context>
+<x-context data-tags="onscreen"></x-context>
+<x-context data-tags="admin"></x-context>
+<x-context :data-tags="$store.router.current?.path ? `route:${$store.router.current.path}` : ''"></x-context>
+```
+
+Framework bootstrap also injects one hidden runtime context automatically: `data-runtime="browser"` for normal web sessions or `data-runtime="app"` for the packaged desktop runtime. That same element exposes `runtime-browser` or `runtime-app` through `data-tags`.
+
+Framework helper import:
+
+```js
+import { getContexts, getAttributeValues, getTags, getContents } from "/mod/_core/framework/js/context.js";
 ```
 
 Rules:
 
 - these elements are non-visual helpers, not user-facing UI
-- the current document's `tag` and `tags` values are unioned at skill-discovery time
+- the current document's `data-tags` values are unioned at skill-discovery time, including the framework-owned runtime context element
 - skill frontmatter may use `metadata.when` as either `true` or a `{ tags: [...] }` condition to require those tags before catalog inclusion or explicit load eligibility
 - skill frontmatter may use `metadata.loaded` as either `true` or another `{ tags: [...] }` condition for automatic prompt injection, and may use `metadata.placement` to choose whether that content lands in system, transient, or history context, except that auto-loaded skills may not resolve to `history` and therefore fall back to `system` unless they explicitly set `transient`
-- modules own the actual tag names they emit; there is no separate centralized registry in the framework
+- modules own the actual feature or route tags they emit; the framework reserves `data-runtime` plus the derived runtime tags `runtime-browser` and `runtime-app`
 - Alpine-bound attributes are the normal way to keep those tags synced with routed or store-owned state
 
 ## `<x-component>`
@@ -223,6 +234,8 @@ Important dialog rules:
 
 Shared dropdown and overflow menus should use `_core/visual/chrome/popover.js`.
 Its auto placement flips upward once bottom space drops below `2.2x` the measured panel height and top space is larger, which keeps row menus from opening into cramped bottom-edge space with unnecessary inner scrolling.
+
+Repo-owned authenticated-app image assets should come from `_core/visual/res/` instead of feature-local image folders. The public `/login` and `/enter` shells are the exception: they stay on `/pages/res/` because they must not depend on authenticated `/mod/...` assets.
 
 ## Override Rules
 

@@ -1,0 +1,87 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Browser</title>
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+
+      body {
+        display: grid;
+        place-items: center;
+        background:
+          radial-gradient(circle at top, rgba(49, 90, 184, 0.22), transparent 42%),
+          linear-gradient(180deg, #07101b, #040a12 72%);
+        color: rgba(239, 245, 255, 0.88);
+        font: 500 16px/1.5 "SF Pro Text", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+      }
+
+      .browser-frame-empty-state {
+        display: grid;
+        justify-items: center;
+        gap: 1rem;
+        padding: 2rem;
+        text-align: center;
+      }
+
+      .browser-frame-empty-state-figure {
+        display: grid;
+        place-items: center;
+        transform-origin: center;
+        animation: browser-frame-empty-float 8.4s linear infinite;
+      }
+
+      .browser-frame-empty-state img {
+        width: clamp(112px, 18vw, 168px);
+        max-width: 100%;
+        transform-origin: 52% 56%;
+        filter: drop-shadow(0 16px 28px rgba(24, 56, 128, 0.36));
+      }
+
+      .browser-frame-empty-state p {
+        max-width: 18rem;
+        margin: 0;
+        letter-spacing: 0.01em;
+      }
+
+      @keyframes browser-frame-empty-float {
+        0% {
+          transform: translate3d(0, 0, 0) rotate(-6deg);
+        }
+
+        25% {
+          transform: translate3d(5px, -5px, 0) rotate(-2deg);
+        }
+
+        50% {
+          transform: translate3d(0, -8px, 0) rotate(5deg);
+        }
+
+        75% {
+          transform: translate3d(-5px, -4px, 0) rotate(1deg);
+        }
+
+        100% {
+          transform: translate3d(0, 0, 0) rotate(-6deg);
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .browser-frame-empty-state-figure {
+          animation: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="browser-frame-empty-state" aria-label="Browser placeholder">
+      <div class="browser-frame-empty-state-figure" aria-hidden="true">
+        <img src="/mod/_core/visual/res/engineer/astronaut_red_no_bg.png" alt="" />
+      </div>
+      <p>browser feature is currently being implemented</p>
+    </main>
+  </body>
+</html>

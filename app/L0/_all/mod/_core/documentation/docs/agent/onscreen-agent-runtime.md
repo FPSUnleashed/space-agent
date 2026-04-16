@@ -88,6 +88,8 @@ Key files:
 - `view.js`: thread rendering wiring
 - `store.js`: display mode, drag, edge-hide peeking, resize, send loop, queued follow-ups, and scroll behavior
 
+The draggable astronaut button and the shared thread assistant helmet now resolve through `/mod/_core/visual/res/chat/overlay/` so authenticated app imagery stays centralized under `_core/visual/res/`. The public `/login` and `/enter` shells remain the exception and keep their own mirrored astronaut asset under `/pages/res/`.
+
 The routed overlay anchors in `_core/router` are the supported place for floating routed UI. The overlay should not be hardwired directly into the router shell.
 
 The shared thread view keeps settled assistant replies markdown-rendered, but submitted user bubbles stay plain pre-wrapped text so typed blank lines and trailing spacing display literally instead of expanding into markdown paragraph gaps.
@@ -111,7 +113,7 @@ Those same launchers may also call `showExamplePromptInactiveBubble()` on the gl
 
 For remote API mode, `_core/onscreen_agent/api.js` now finalizes the upstream fetch request through extension seam `_core/onscreen_agent/api.js/prepareOnscreenAgentApiRequest`. Provider-specific request policy such as OpenRouter headers belongs in headless helper modules like `_core/open_router`, so prompt assembly in `llm.js` no longer hardcodes those headers.
 
-Local Hugging Face sends use the compact `LOCAL_ONSCREEN_AGENT_SYSTEM_PROMPT` profile from `llm.js` rather than the full firmware prompt plus skill catalog. The normal overlay history, transient context, execution loop, prompt inspection, and custom instructions still apply.
+Local Hugging Face sends use the compact `LOCAL_ONSCREEN_AGENT_SYSTEM_PROMPT` profile from `llm.js` rather than the full firmware prompt plus skill catalog. The normal overlay history, transient context, execution loop, prompt inspection, and custom instructions still apply. The actual local-runtime request should reuse the same folded transport messages that the API path would send upstream, while prompt inspection keeps showing the richer pre-fold prepared payload.
 
 Dragging the astronaut past the left, right, or bottom viewport edge now first hits a dead zone at the in-screen clamp that matches the reveal-threshold distance so corner placement stays practical, then snaps the shell into a hidden peeking pose on that edge after the pointer crosses that extra distance. Top-edge hiding is disabled entirely. In the enabled hidden states the shell hide math follows the full rendered astronaut bounds and now keeps roughly 60 percent of the astronaut visible with one uniform inset. On fine-pointer desktops the drag hitbox stays the same size as the visible astronaut so the image cannot drift away from the interactive box. The normal right-side flip still applies while hidden, the hidden-state avatar image shadow is suppressed so the visible silhouette does not look larger on right or bottom hides than it does on the left, and the chat body collapses away while the hidden panel and history surfaces stop intercepting clicks or wheel scrolling until a click or drag back past the reveal threshold restores the previous compact or full chat body.
 
