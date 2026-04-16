@@ -107,7 +107,7 @@ Rules:
 - frontend callers should derive writable roots from the canonical permission rules and the `user_self_info` identity fields instead of depending on a serialized scope payload
 - callers that need server-confirmed writable discovery may pass `access: "write"` or `writableOnly: true` to `file_list` or `file_paths`; repository pickers may add `gitRepositories: true` with a pattern such as `**/.git/` to receive writable owner roots like `L1/<group>/` and `L2/<user>/`
 - when `CUSTOMWARE_GIT_HISTORY` is enabled, writable `L1` and `L2` file mutations schedule debounced per-owner Git history commits; in clustered runtime, worker writes defer that scheduling to the primary after it rebuilds the authoritative watchdog state for the changed logical paths
-- debounced owner-root history work must stay off the request path; the native local-history backend runs Git asynchronously and serializes operations per owner repository so primary-owned scheduling does not block the event loop or race the same repo
+- debounced owner-root history work must stay off the request path; local-history backends serialize operations per owner repository so primary-owned scheduling does not block the event loop or race the same repo, native keeps Git subprocess work asynchronous, and the isomorphic fallback reuses immutable history-entry and tree caches for repeated Time Travel reads
 - when `USER_FOLDER_SIZE_LIMIT_BYTES` is positive, `file_access.js` must check all app-file writes, copies, moves, and deletes through `user_quota.js` before mutation; projected growth over the cap is rejected, while a user folder already over cap may only perform mutations whose net `L2/<user>/` size delta is negative
 - user-folder quota accounting is cached per resolved `L2/<user>/` root and normal app-file mutations update that cache by byte deltas instead of rescanning the whole folder on every write; other backend app-path mutation callers invalidate the affected cache through `recordAppPathMutations`, and Git history commits, rollback, and revert also invalidate affected L2 quota cache entries because backend `.git` metadata can change outside the app-file mutation delta
 
@@ -117,6 +117,10 @@ Rules:
 - module metadata lookup
 - Git-backed installs and updates
 - module removal
+
+Module Git rules:
+
+- `module_manage.js` must pass resolved runtime params into shared Git client creation so `GIT_BACKEND` affects module info, install, and update flows consistently
 
 Module discovery rules:
 
@@ -138,13 +142,14 @@ Admin-only access is required for aggregated or cross-user user-layer listings.
 `git_history.js` is the canonical entry point for optional per-owner writable-layer history:
 
 - `CUSTOMWARE_GIT_HISTORY=false` disables automatic history scheduling, but the runtime parameter defaults to `true`
+- local-history client creation must pass resolved runtime params into `server/lib/git/local_history.js` so `GIT_BACKEND` can force `native`, `nodegit`, or `isomorphic`; `auto` keeps the shared fallback order
 - each writable `L1/<group>/` and `L2/<user>/` owner root may become its own local Git repository when history is enabled
 - file writes, deletes, copies, moves, auth/user writes, group writes, and module installs schedule a debounced commit for the affected owner root
 - in clustered runtime, workers must not keep their own owner-root Git commit debounces; they publish changed logical app paths once, and the primary schedules the debounced commit after `applyProjectPathChanges(...)` finishes rebuilding the authoritative indexes
-- native local-history Git subprocesses run asynchronously and share a per-owner-repository queue, so commit, preview, diff, rollback, and revert work for one owner root never overlap each other or block the primary event loop while the subprocess runs
+- local-history backends serialize work per owner repository, so commit, preview, diff, rollback, and revert operations for one root never overlap; native keeps subprocess work asynchronous, and the isomorphic fallback reuses immutable history-entry and tree caches for repeated Time Travel reads
 - the debounce window starts at 10 seconds of quiet, drops to 5 seconds after a pending owner root has waited more than 1 minute, drops to 1 second after 5 minutes, and commits immediately after 10 minutes
 - server shutdown flushes pending commits
-- commit listing supports page `limit`, page `offset`, and open-ended `fileFilter` matching across changed paths and nested filenames; filtered list responses include full per-commit file action entries for listed commits, not only the matching files, but still do not include patch bodies
+- commit listing supports page `limit`, page `offset`, and open-ended `fileFilter` matching across changed paths and nested filenames; filtered list responses include full per-commit file action entries for listed commits, not only the matching files, still do not include patch bodies, and may return `total: null` when the backend can prove `hasMore` without finishing a full filtered count
 - file diff reads, operation previews, and commit revert operations are separate helper calls so list pages stay fast
 - repository discovery reuses the history target and permission model, returns owner roots rather than `.git` paths, and supports write-access filtering for Time Travel repository selection
 - operation previews require write access, return the files affected by travel or revert, and can return an operation-specific patch for one file

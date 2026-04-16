@@ -1,4 +1,9 @@
 import { ONSCREEN_SKILL_LOAD_HOOK_KEY } from "./skills.js";
+import {
+  appendExecutionTextBlock,
+  formatExecutionLogArgs,
+  formatExecutionTranscriptValue
+} from "/mod/_core/framework/js/execution-format.js";
 
 export const EXECUTION_SEPARATOR = "_____javascript";
 
@@ -479,15 +484,20 @@ function createConsoleRecorder(methodName, originalMethod, logs, targetWindow) {
     }
 
     const logArgs = methodName === "assert" ? args.slice(1) : args;
-    const text = logArgs.length
-      ? logArgs
-          .map((value) =>
-            formatExecutionValue(value, {
-              targetWindow
-            })
-          )
-          .join(" ")
-      : "(no output)";
+    const text = formatExecutionLogArgs(logArgs, {
+      formatFallback: (value, formatterOptions = {}) =>
+        formatExecutionValue(value, {
+          targetWindow: formatterOptions.targetWindow || targetWindow
+        }),
+      normalizeSpecialValue: (value) => {
+        if (isLoadedOnscreenSkill(value)) {
+          return `[Loaded skill ${value.path}]`;
+        }
+
+        return undefined;
+      },
+      targetWindow
+    });
 
     logs.push({
       level: methodName,
@@ -661,299 +671,20 @@ function flattenExecutionMessageValue(value) {
     .join("\\n");
 }
 
-function normalizeExecutionTextBlock(value) {
-  return String(value ?? "")
-    .replace(/\r\n/g, "\n")
-    .replace(/\r/g, "\n");
-}
-
-function appendExecutionTextBlock(lines, label, value) {
-  const normalizedValue = normalizeExecutionTextBlock(value);
-  const valueLines = normalizedValue.split("\n");
-
-  lines.push(`${label}↓`);
-  lines.push(...valueLines);
-}
-
-function createExecutionJsonReplacer(targetWindow) {
-  const seen = new WeakSet();
-
-  return function executionJsonReplacer(_key, value) {
-    if (typeof value === "bigint") {
-      return String(value);
-    }
-
-    if (typeof value === "symbol") {
-      return value.toString();
-    }
-
-    if (typeof value === "function") {
-      return `[Function ${value.name || "anonymous"}]`;
-    }
-
-    if (value instanceof Error) {
-      return {
-        message: value.message || String(value),
-        name: value.name || "Error",
-        stack: value.stack || undefined
-      };
-    }
-
-    if (value === targetWindow) {
-      return `[Window ${targetWindow.location?.href || ""}]`;
-    }
-
-    if (targetWindow.Document && value instanceof targetWindow.Document) {
-      return `[Document ${value.URL || ""}]`;
-    }
-
-    if (targetWindow.Location && value instanceof targetWindow.Location) {
-      return `[Location ${value.href || ""}]`;
-    }
-
-    if (isNodeLike(targetWindow, value)) {
-      return summarizeNode(targetWindow, value);
-    }
-
-    if (targetWindow.NodeList && value instanceof targetWindow.NodeList) {
-      return Array.from(value);
-    }
-
-    if (targetWindow.HTMLCollection && value instanceof targetWindow.HTMLCollection) {
-      return Array.from(value);
-    }
-
-    if (value instanceof Map) {
-      return Array.from(value.entries());
-    }
-
-    if (value instanceof Set) {
-      return Array.from(value.values());
-    }
-
-    if (value && typeof value === "object") {
-      if (seen.has(value)) {
-        return "[Circular]";
-      }
-
-      seen.add(value);
-    }
-
-    return value;
-  };
-}
-
-function normalizeExecutionStructuredResultValue(value, options = {}) {
-  const { targetWindow, seen = new WeakSet() } = options;
-
-  if (value === null || value === undefined) {
-    return value;
-  }
-
-  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-    return value;
-  }
-
-  if (typeof value === "bigint") {
-    return String(value);
-  }
-
-  if (typeof value === "symbol") {
-    return value.toString();
-  }
-
-  if (typeof value === "function") {
-    return `[Function ${value.name || "anonymous"}]`;
-  }
-
-  if (value instanceof Error) {
-    return {
-      message: value.message || String(value),
-      name: value.name || "Error",
-      stack: value.stack || undefined
-    };
-  }
-
-  if (value === targetWindow) {
-    return `[Window ${targetWindow.location?.href || ""}]`;
-  }
-
-  if (targetWindow.Document && value instanceof targetWindow.Document) {
-    return `[Document ${value.URL || ""}]`;
-  }
-
-  if (targetWindow.Location && value instanceof targetWindow.Location) {
-    return `[Location ${value.href || ""}]`;
-  }
-
-  if (isNodeLike(targetWindow, value)) {
-    return summarizeNode(targetWindow, value);
-  }
-
-  if (targetWindow.NodeList && value instanceof targetWindow.NodeList) {
-    return Array.from(value, (entry) =>
-      normalizeExecutionStructuredResultValue(entry, {
-        seen,
-        targetWindow
-      })
-    );
-  }
-
-  if (targetWindow.HTMLCollection && value instanceof targetWindow.HTMLCollection) {
-    return Array.from(value, (entry) =>
-      normalizeExecutionStructuredResultValue(entry, {
-        seen,
-        targetWindow
-      })
-    );
-  }
-
-  if (Array.isArray(value)) {
-    return value.map((entry) =>
-      normalizeExecutionStructuredResultValue(entry, {
-        seen,
-        targetWindow
-      })
-    );
-  }
-
-  if (value instanceof Map) {
-    return Array.from(value.entries(), ([key, entryValue]) => ({
-      key: normalizeExecutionStructuredResultValue(key, {
-        seen,
-        targetWindow
-      }),
-      value: normalizeExecutionStructuredResultValue(entryValue, {
-        seen,
-        targetWindow
-      })
-    }));
-  }
-
-  if (value instanceof Set) {
-    return Array.from(value.values(), (entry) =>
-      normalizeExecutionStructuredResultValue(entry, {
-        seen,
-        targetWindow
-      })
-    );
-  }
-
-  if (typeof value === "object") {
-    if (isLoadedOnscreenSkill(value)) {
-      return `[Loaded skill ${value.path}]`;
-    }
-
-    if (seen.has(value)) {
-      return "[Circular]";
-    }
-
-    seen.add(value);
-
-    return Object.fromEntries(
-      Object.entries(value).map(([key, entryValue]) => [
-        key,
-        normalizeExecutionStructuredResultValue(entryValue, {
-          seen,
-          targetWindow
-        })
-      ])
-    );
-  }
-
-  return String(value);
-}
-
-function formatExecutionStructuredResultValueAsYaml(value, options = {}) {
-  const { targetWindow } = options;
-  const yaml = targetWindow?.space?.utils?.yaml;
-
-  if (!yaml || typeof yaml.stringify !== "function") {
-    return "";
-  }
-
-  const normalizedValue = normalizeExecutionStructuredResultValue(value, {
-    targetWindow
-  });
-
-  try {
-    if (Array.isArray(normalizedValue)) {
-      const wrappedYaml = normalizeExecutionTextBlock(
-        yaml.stringify({
-          items: normalizedValue
-        })
-      );
-
-      if (wrappedYaml.startsWith("items:\n")) {
-        return wrappedYaml
-          .slice("items:\n".length)
-          .replace(/^  /gmu, "")
-          .trimEnd();
-      }
-
-      if (wrappedYaml.startsWith("items: ")) {
-        return wrappedYaml.slice("items: ".length).trimEnd();
-      }
-
-      return wrappedYaml.trimEnd();
-    }
-
-    if (normalizedValue && typeof normalizedValue === "object") {
-      return normalizeExecutionTextBlock(yaml.stringify(normalizedValue)).trimEnd();
-    }
-  } catch (error) {
-    // Fall back to JSON below when the lightweight YAML helper cannot serialize the shape.
-  }
-
-  return "";
-}
-
 export function formatExecutionResultValue(value, options) {
   const { targetWindow } = options;
+  return formatExecutionTranscriptValue(value, {
+    formatFallback: (fallbackValue, formatterOptions = {}) =>
+      formatExecutionValue(fallbackValue, {
+        targetWindow: formatterOptions.targetWindow || targetWindow
+      }),
+    normalizeSpecialValue: (specialValue) => {
+      if (isLoadedOnscreenSkill(specialValue)) {
+        return `[Loaded skill ${specialValue.path}]`;
+      }
 
-  if (value === undefined) {
-    return "";
-  }
-
-  if (value === null) {
-    return "null";
-  }
-
-  if (typeof value === "string") {
-    return normalizeExecutionTextBlock(value);
-  }
-
-  if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") {
-    return String(value);
-  }
-
-  if (typeof value === "symbol") {
-    return value.toString();
-  }
-
-  if (typeof value === "function" || value instanceof Error) {
-    return formatExecutionValue(value, {
-      targetWindow
-    });
-  }
-
-  if (typeof value === "object") {
-    const yamlResult = formatExecutionStructuredResultValueAsYaml(value, {
-      targetWindow
-    });
-
-    if (yamlResult) {
-      return yamlResult;
-    }
-
-    try {
-      return normalizeExecutionTextBlock(JSON.stringify(value, createExecutionJsonReplacer(targetWindow), 2));
-    } catch (error) {
-      // Fall back to the console-oriented formatter for unserializable objects.
-    }
-  }
-
-  return formatExecutionValue(value, {
+      return undefined;
+    },
     targetWindow
   });
 }
@@ -966,7 +697,7 @@ function formatExecutionResultLines(result) {
 
   prints.forEach((entry) => {
     const level = typeof entry?.level === "string" && entry.level.trim() ? entry.level.trim() : "log";
-    lines.push(`${level}: ${flattenExecutionMessageValue(entry?.text ?? "")}`);
+    appendExecutionTextBlock(lines, level, entry?.text ?? "");
   });
 
   loadedSkills.forEach((skill, index) => {

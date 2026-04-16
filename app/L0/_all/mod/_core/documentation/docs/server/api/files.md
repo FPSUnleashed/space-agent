@@ -111,7 +111,7 @@ Current behavior:
 
 `file_paths` is the pattern-discovery endpoint used by systems such as skill discovery and dashboard panel discovery.
 
-It also accepts an optional explicit `maxLayer` filter when a caller needs module-oriented discovery to stay within a firmware or lower-layer ceiling. The current first-party examples are the admin agent skill catalog, which resolves readable `mod/*/*/ext/skills/*/SKILL.md` files with `maxLayer=0` so writable customware layers do not influence prompt-facing skill text, and the dashboard panel index, which resolves readable `mod/*/*/ext/panels/*.yaml` files before batch-reading them through `file_read`.
+It also accepts an optional explicit `maxLayer` filter when a caller needs module-oriented discovery to stay within a firmware or lower-layer ceiling. The current first-party example is the dashboard panel index, which resolves readable `mod/*/*/ext/panels/*.yaml` files before batch-reading them through `file_read`.
 
 Behavior summary:
 
@@ -154,9 +154,9 @@ Behavior summary:
 - L2 history repos ignore `meta/password.json` and `meta/logins.json`; rollback preserves those files instead of resetting them to old committed state
 - L1 history repos still get a `.gitignore`, currently empty
 - `.git` metadata is reserved and blocked from app-file reads, writes, direct fetches, and path indexes
-- `git_history_list` accepts `path`, optional `limit`, optional `offset`, and optional `fileFilter`; plain filters match as open-ended changed-path or nested-filename substrings, and responses return a page of commit metadata with timestamps, hashes, `currentHash`, and full changed-file action entries for listed commits without loading patch bodies
+- `git_history_list` accepts `path`, optional `limit`, optional `offset`, and optional `fileFilter`; plain filters match as open-ended changed-path or nested-filename substrings, responses return a page of commit metadata with timestamps, hashes, `currentHash`, and full changed-file action entries for listed commits without loading patch bodies, and filtered pages may return `total: null` when `hasMore` is already known without a full scan
 - repository selectors should discover writable history roots through `file_paths` or `file_list` with `gitRepositories: true` and `access: "write"` before calling the history endpoints for a selected owner root
 - `git_history_diff` accepts `path`, `commitHash`, and `filePath`, requires read permission, and returns the patch for that one file in that one commit
 - `git_history_preview` accepts `path`, `commitHash`, `operation`, and optional `filePath`, requires write permission, returns affected files for travel or revert, and returns the operation-specific patch when a file is provided
 - `git_history_rollback` accepts `path` plus `commitHash` or `commit`, requires write permission, preserves the previous head for forward travel when possible, hard-resets the owner repo, and suppresses history scheduling for the rollback itself
-- `git_history_revert` accepts `path` plus `commitHash` or `commit`, requires write permission, and creates a new commit with inverse changes instead of moving the current point
+- `git_history_revert` accepts `path` plus `commitHash` or `commit`, requires write permission, creates a new commit with inverse changes instead of moving the current point, uses a Git-like reverse merge so later non-overlapping edits can still revert cleanly, and returns `409` when overlapping changes keep the selected commit from applying cleanly to the current worktree; conflict responses should identify the blocking file and, when available, the current versus expected file versions

@@ -1,27 +1,31 @@
 # Prompt And Execution
 
-This doc focuses on how the onscreen agent builds model input and how execution results are fed back into history.
+This doc focuses on the standard prepared prompt path used by the onscreen and admin agents, and on how execution results are fed back into history.
 
 ## Primary Sources
 
 - `app/L0/_all/mod/_core/onscreen_agent/AGENTS.md`
+- `app/L0/_all/mod/_core/agent_prompt/AGENTS.md`
 - `app/L0/_all/mod/_core/onscreen_agent/prompts/AGENTS.md`
 - `app/L0/_all/mod/_core/promptinclude/AGENTS.md`
+- `app/L0/_all/mod/_core/agent_prompt/prompt-runtime.js`
 - `app/L0/_all/mod/_core/onscreen_agent/llm.js`
+- `app/L0/_all/mod/_core/admin/views/agent/prompt.js`
 - `app/L0/_all/mod/_core/onscreen_agent/execution.js`
 - `app/L0/_all/mod/_core/onscreen_agent/api.js`
 - `app/L0/_all/mod/_core/promptinclude/promptinclude.js`
 
 ## Prompt Boot Timing
 
-The overlay no longer assembles full prompt state during plain page-load init.
+The first-party agent surfaces now share one standard prepared-prompt builder, but they do not all bootstrap it at the same time.
 
 Current timing:
 
-- init restores config, browser UI state, and saved history
-- the first prompt-dependent action such as send, prompt-history open, or another explicit rebuild path then lazily loads the default system prompt, installs the onscreen skill runtime, and runs prompt-section assembly
-- later prompt rebuilds reuse the same prompt runtime and only refresh the parts that changed
-- incremental history refresh still reuses the same prepared-message builders as the full prompt build, so prompt-history previews and outbound request payloads stay aligned after settled turns
+- onscreen init restores config, browser UI state, and saved history first, and then waits until the first prompt-dependent action before loading prompt dependencies and assembling prompt input
+- admin primes the same standard prompt runtime during init because prompt history and instruction editing are always visible on that surface
+- later prompt rebuilds still run through the same shared prompt runtime, so prompt-history previews and outbound request payloads stay aligned after settled turns
+- the shared prompt runtime caches only structured-clone-safe prompt input snapshots; runtime-only references such as live prompt instances are stripped before caching, and defensive clone fallback keeps prompt-history tooling from crashing on stray non-cloneable values
+- admin's only prompt-order difference is custom instruction placement: its user-authored instructions are appended after the shared standard system sections
 
 ## Prepared Prompt Order
 
@@ -81,8 +85,8 @@ Important execution rules:
 - execution output is fed back as `_____framework`
 - the live firmware prompt distinguishes runtime identity fields from persisted YAML keys: `space.api.userSelfInfo()` exposes `fullName`, but `~/user.yaml` stores `full_name`, so profile edits should update `full_name`, not `fullName`
 - if an execution block returns no result and prints no logs, the transcript says `execution returned no result and no console logs were printed`
-- multiline results are labeled with `result↓`
-- structured results should prefer YAML over JSON when the shared serializer can express them cleanly
+- multiline console-print blocks are labeled with `log↓`, `info↓`, `warn↓`, `error↓`, `debug↓`, `dir↓`, `table↓`, or `assert↓`, and multiline returned values are labeled with `result↓`
+- structured console-print payloads and structured results should prefer YAML over JSON when the shared serializer can express them cleanly, and ordinary returned arrays or objects should be preserved there rather than collapsed to a short console-style preview
 - `space.skills.load(...)` still returns the typed skill object, but `history` placement writes the skill body into history while `system` and `transient` placement only report `skill loaded to system message` or `skill loaded to transient area` and store the skill in runtime prompt context for later requests
 
 ## Failure And Retry Behavior
@@ -101,7 +105,7 @@ The transport layer uses one `OnscreenAgentLlmClient` superclass with provider s
 - `OnscreenAgentLocalLlmClient` sends the prepared message payload through the shared `_core/huggingface/manager.js` browser runtime, using the configured Hugging Face repo id and dtype
 - local sends reuse the same final folded transport messages that the API path would send upstream, while the prompt-history tools still expose the richer pre-fold prepared payload with `_____framework`, `_____user`, and trailing `_____transient` boundaries
 
-When `llm_provider` is `local`, `llm.js` builds the system section from `LOCAL_ONSCREEN_AGENT_SYSTEM_PROMPT` plus custom instructions instead of the full firmware prompt and skill catalog. The same prepared-prompt machinery still carries examples when present, live history, compacted history, and transient context.
+When `llm_provider` is `local`, the first-party agent surfaces now keep the same full prepared prompt path that API mode uses, including the firmware prompt, prompt includes, skill catalog, auto-loaded skill context, custom instructions, history, and transient context. The separate `/huggingface` testing page still keeps its own plain system-prompt-only chat surface.
 
 The store and retry loop consume both providers through the same `streamOnscreenAgentCompletion(...)` seam. Provider-specific behavior should stay behind those client classes unless it affects prompt construction, which belongs in `llm.js`.
 

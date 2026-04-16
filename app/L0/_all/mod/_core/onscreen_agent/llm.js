@@ -1,4 +1,5 @@
 import * as config from "/mod/_core/onscreen_agent/config.js";
+import { createAgentPromptInstance } from "/mod/_core/agent_prompt/prompt-runtime.js";
 import { buildMessagePromptParts, MESSAGE_PROMPT_PART_BLOCK } from "/mod/_core/onscreen_agent/attachments.js";
 import * as llmParams from "/mod/_core/onscreen_agent/llm-params.js";
 import * as skills from "/mod/_core/onscreen_agent/skills.js";
@@ -18,14 +19,6 @@ export const ONSCREEN_AGENT_PREPARED_MESSAGE_BLOCK = Object.freeze({
 export const ONSCREEN_AGENT_HISTORY_COMPACT_PROMPT_PATH = "/mod/_core/onscreen_agent/prompts/compact-prompt.md";
 export const ONSCREEN_AGENT_HISTORY_AUTO_COMPACT_PROMPT_PATH =
   "/mod/_core/onscreen_agent/prompts/compact-prompt-auto.md";
-export const LOCAL_ONSCREEN_AGENT_SYSTEM_PROMPT = [
-  "You are Space Agent running in the browser overlay.",
-  "Be concise, practical, and task-focused.",
-  "When browser runtime action is needed, reply with exactly `_____javascript` on its own line, followed only by JavaScript until the end of the message.",
-  "Use top-level await directly.",
-  "Available runtime tools include `space.api`, `space.chat`, `space.onscreenAgent`, `fetch`, `window`, `document`, and `localStorage`.",
-  "After execution results return, continue the task. Do not claim you lack browser, file, or live-data access."
-].join("\n");
 
 const ONSCREEN_AGENT_PROMPT_MESSAGE_SOURCE = Object.freeze({
   EXAMPLE: "example",
@@ -54,6 +47,10 @@ function formatCustomUserInstructions(systemPrompt = "") {
   }
 
   return `## User specific instructions\n\n${customPrompt}`;
+}
+
+function resolveCustomPromptPlacement(options = {}) {
+  return options?.customPromptPlacement === "end" ? "end" : "after-base";
 }
 
 function stripDefaultPromptPrefix(storedPrompt, defaultSystemPrompt) {
@@ -87,10 +84,6 @@ function normalizePromptSections(sections) {
   return sections
     .map((section) => normalizeSystemPrompt(section))
     .filter(Boolean);
-}
-
-function shouldUseLocalPromptProfile(context = {}) {
-  return context.localProfile === true || context.options?.localProfile === true;
 }
 
 async function loadPromptFile(promptPath, promptLabel) {
@@ -489,31 +482,6 @@ export function extractCustomOnscreenAgentSystemPrompt(storedPrompt = "", defaul
 export const buildOnscreenAgentSystemPromptSections = globalThis.space.extend(
   import.meta,
   async function buildOnscreenAgentSystemPromptSections(context = {}) {
-    if (shouldUseLocalPromptProfile(context)) {
-      const customPrompt = formatCustomUserInstructions(context.systemPrompt);
-      const skillPromptContext = await skills.buildOnscreenSkillPromptContext({
-        includeAutoLoaded: false,
-        includeCatalog: false,
-        includeRuntimeLoaded: true
-      });
-
-      return {
-        ...context,
-        autoLoadedSkillsSection: "",
-        basePrompt: LOCAL_ONSCREEN_AGENT_SYSTEM_PROMPT,
-        customPrompt,
-        loadedSkillsSection: skillPromptContext.loadedSkillsSection,
-        loadedTransientSections: skillPromptContext.loadedTransientSections,
-        localProfile: true,
-        sections: [
-          LOCAL_ONSCREEN_AGENT_SYSTEM_PROMPT,
-          customPrompt,
-          skillPromptContext.loadedSkillsSection
-        ].filter(Boolean),
-        skillsSection: ""
-      };
-    }
-
     const basePrompt = normalizeSystemPrompt(
       context.defaultSystemPrompt || (await fetchDefaultOnscreenAgentSystemPrompt())
     );
@@ -521,6 +489,23 @@ export const buildOnscreenAgentSystemPromptSections = globalThis.space.extend(
     const skillPromptContext = await skills.buildOnscreenSkillPromptContext();
     const skillsSection = skillPromptContext.catalogSection;
     const autoLoadedSkillsSection = skillPromptContext.autoLoadedSkillsSection;
+    const customPromptPlacement = resolveCustomPromptPlacement(context.options);
+    const sections =
+      customPromptPlacement === "end"
+        ? [
+            basePrompt,
+            skillsSection,
+            autoLoadedSkillsSection,
+            skillPromptContext.loadedSkillsSection,
+            customPrompt
+          ]
+        : [
+            basePrompt,
+            customPrompt,
+            skillsSection,
+            autoLoadedSkillsSection,
+            skillPromptContext.loadedSkillsSection
+          ];
 
     return {
       ...context,
@@ -536,13 +521,7 @@ export const buildOnscreenAgentSystemPromptSections = globalThis.space.extend(
           ? skillPromptContext.loadedTransientSections
           : [])
       ],
-      sections: [
-        basePrompt,
-        customPrompt,
-        skillsSection,
-        autoLoadedSkillsSection,
-        skillPromptContext.loadedSkillsSection
-      ].filter(Boolean),
+      sections: sections.filter(Boolean),
       skillsSection
     };
   }
@@ -596,6 +575,7 @@ export const buildOnscreenAgentTransientSections = globalThis.space.extend(
 export const buildOnscreenAgentPromptInput = globalThis.space.extend(
   import.meta,
   async function buildOnscreenAgentPromptInput(context = {}) {
+    const { prompt, ...promptInputContext } = context;
     const historyMessagesInput = Array.isArray(context.historyMessages) ? context.historyMessages : context.messages;
     const systemPromptContext = await buildOnscreenAgentSystemPromptSections({
       defaultSystemPrompt: context.defaultSystemPrompt,
@@ -656,7 +636,7 @@ export const buildOnscreenAgentPromptInput = globalThis.space.extend(
     const requestEntries = [systemEntry, ...exampleEntries, ...historyEntries, transientEntry].filter(Boolean);
 
     return {
-      ...context,
+      ...promptInputContext,
       exampleEntries: clonePreparedPromptEntries(exampleEntries),
       exampleMessages: createPromptMessagesFromEntries(exampleEntries),
       historyEntries: clonePreparedPromptEntries(historyEntries),
@@ -677,9 +657,10 @@ export const buildOnscreenAgentPromptMessageContext = globalThis.space.extend(
   import.meta,
   async function buildOnscreenAgentPromptMessageContext(context = {}) {
     const promptInput = await buildOnscreenAgentPromptInput(context);
+    const { prompt, ...promptMessageContext } = context;
 
     return {
-      ...context,
+      ...promptMessageContext,
       exampleEntries: clonePreparedPromptEntries(promptInput.exampleEntries),
       historyEntries: clonePreparedPromptEntries(promptInput.historyEntries),
       requestEntries: clonePreparedPromptEntries(promptInput.requestEntries),
@@ -703,97 +684,50 @@ export async function buildOnscreenAgentPromptMessages(systemPrompt, messages, o
   return Array.isArray(promptInput?.requestMessages) ? promptInput.requestMessages : [];
 }
 
-class OnscreenAgentPromptInstance {
-  constructor(options = {}) {
-    const historyMessages = Array.isArray(options.historyMessages) ? options.historyMessages : options.messages;
+async function updateOnscreenAgentPromptHistory({
+  context = {},
+  historyMessages = [],
+  prompt,
+  promptInput = {}
+} = {}) {
+  const historyContext = await buildOnscreenAgentHistoryMessages({
+    ...context,
+    exampleEntries: clonePreparedPromptEntries(promptInput.exampleEntries),
+    historyMessages,
+    prompt,
+    runtimeSystemPrompt: promptInput.systemPrompt,
+    systemPrompt: promptInput.systemPrompt,
+    systemPromptContext: promptInput.systemPromptContext
+  });
+  const historyEntries = normalizeConversationMessages(historyContext?.historyMessages)
+    .flatMap((message) =>
+      createPreparedPromptEntriesFromMessage(message, {
+        source: resolveHistoryPromptEntrySource(message)
+      })
+    )
+    .filter(Boolean);
+  const requestEntries = [
+    createSystemPromptEntry(promptInput.systemPrompt),
+    ...clonePreparedPromptEntries(promptInput.exampleEntries),
+    ...clonePreparedPromptEntries(historyEntries),
+    clonePreparedPromptEntry(promptInput.transientEntry)
+  ].filter(Boolean);
 
-    this.context = {
-      defaultSystemPrompt: options.defaultSystemPrompt,
-      exampleMessages: Array.isArray(options.exampleMessages) ? options.exampleMessages : [],
-      historyMessages: Array.isArray(historyMessages) ? historyMessages : [],
-      options: options.options && typeof options.options === "object" ? { ...options.options } : {},
-      systemPrompt: typeof options.systemPrompt === "string" ? options.systemPrompt : "",
-      transientSections: Array.isArray(options.transientSections) ? options.transientSections : []
-    };
-    this.promptInput = createEmptyPromptInput();
-  }
-
-  async build(context = {}) {
-    const historyMessages = Array.isArray(context.historyMessages) ? context.historyMessages : context.messages;
-
-    this.context = {
-      ...this.context,
-      ...context,
-      historyMessages: Array.isArray(historyMessages) ? historyMessages : this.context.historyMessages,
-      options: context.options && typeof context.options === "object" ? { ...context.options } : this.context.options,
-      transientSections: Array.isArray(context.transientSections)
-        ? context.transientSections
-        : this.context.transientSections
-    };
-    this.promptInput = await buildOnscreenAgentPromptInput({
-      ...this.context,
-      prompt: this
-    });
-    return clonePromptInput(this.promptInput);
-  }
-
-  async updateHistory(historyMessages, options = {}) {
-    const nextHistoryMessages = Array.isArray(historyMessages) ? historyMessages : [];
-
-    this.context = {
-      ...this.context,
-      ...options,
-      historyMessages: nextHistoryMessages
-    };
-
-    if (!this.promptInput?.requestEntries?.length && !this.promptInput?.systemPrompt) {
-      return this.build({
-        ...options,
-        historyMessages: nextHistoryMessages
-      });
-    }
-
-    const historyContext = await buildOnscreenAgentHistoryMessages({
-      ...this.context,
-      exampleEntries: clonePreparedPromptEntries(this.promptInput.exampleEntries),
-      historyMessages: nextHistoryMessages,
-      prompt: this,
-      runtimeSystemPrompt: this.promptInput.systemPrompt,
-      systemPrompt: this.promptInput.systemPrompt,
-      systemPromptContext: this.promptInput.systemPromptContext
-    });
-    const historyEntries = normalizeConversationMessages(historyContext?.historyMessages)
-      .flatMap((message) =>
-        createPreparedPromptEntriesFromMessage(message, {
-          source: resolveHistoryPromptEntrySource(message)
-        })
-      )
-      .filter(Boolean);
-    const requestEntries = [
-      createSystemPromptEntry(this.promptInput.systemPrompt),
-      ...clonePreparedPromptEntries(this.promptInput.exampleEntries),
-      ...clonePreparedPromptEntries(historyEntries),
-      clonePreparedPromptEntry(this.promptInput.transientEntry)
-    ].filter(Boolean);
-
-    this.promptInput = {
-      ...this.promptInput,
-      historyEntries: clonePreparedPromptEntries(historyEntries),
-      historyMessages: createPromptMessagesFromEntries(historyEntries),
-      requestEntries: clonePreparedPromptEntries(requestEntries),
-      requestMessages: createPromptMessagesFromEntries(requestEntries)
-    };
-
-    return clonePromptInput(this.promptInput);
-  }
-
-  getPromptInput() {
-    return clonePromptInput(this.promptInput);
-  }
+  return {
+    ...promptInput,
+    historyEntries: clonePreparedPromptEntries(historyEntries),
+    historyMessages: createPromptMessagesFromEntries(historyEntries),
+    requestEntries: clonePreparedPromptEntries(requestEntries),
+    requestMessages: createPromptMessagesFromEntries(requestEntries)
+  };
 }
 
 export function createOnscreenAgentPromptInstance(options = {}) {
-  return new OnscreenAgentPromptInstance(options);
+  return createAgentPromptInstance({
+    ...options,
+    buildPromptInput: async (context) => buildOnscreenAgentPromptInput(context),
+    updatePromptHistory: async (context) => updateOnscreenAgentPromptHistory(context)
+  });
 }
 
 function createRequestBody(settings, promptInput) {

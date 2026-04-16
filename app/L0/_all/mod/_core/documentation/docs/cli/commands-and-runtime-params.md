@@ -178,6 +178,7 @@ Current params:
 - `SINGLE_USER_APP`
 - `ALLOW_GUEST_USERS`
 - `CUSTOMWARE_GIT_HISTORY`
+- `GIT_BACKEND`
 - `GIT_URL`
 - `USER_FOLDER_SIZE_LIMIT_BYTES`
 
@@ -199,6 +200,7 @@ Only params with `frontend_exposed: true` are injected into page-shell meta tags
 - `SINGLE_USER_APP`: implicit always-authenticated `user` principal with virtual `_admin` access
 - `ALLOW_GUEST_USERS`: enables guest creation from the login screen when password login is enabled
 - `CUSTOMWARE_GIT_HISTORY`: enables optional debounced local Git history repositories for writable `L1/<group>/` and `L2/<user>/` roots; defaults to `true`; owner-root commits wait 10 seconds of quiet, then shorten to 5 seconds after 1 minute of pending writes, 1 second after 5 minutes, and immediate commit after 10 minutes; with `WORKERS>1`, those debounced commits are scheduled only by the clustered primary after it rebuilds authoritative state for worker-reported path changes
+- `GIT_BACKEND`: selects the backend used by server-owned Git flows such as local history and Git-backed module installs; defaults to `auto`, which keeps the normal `native -> nodegit -> isomorphic` fallback order, while concrete values force one backend for local testing or troubleshooting
 - `GIT_URL`: optional Git repository URL used by `node space update` and `node space supervise`; if unset they fall back to the local `origin` remote URL and only then to the canonical repo URL
 - `USER_FOLDER_SIZE_LIMIT_BYTES`: optional per-user `L2/<user>/` folder cap in bytes; `0` disables it, and positive values make app-file mutations reject projected growth over the cap while still allowing mutations that reduce an already-over-limit folder
 - `user` and `group` commands flush pending local-history commits before returning when `CUSTOMWARE_GIT_HISTORY` is enabled because those commands are short-lived processes

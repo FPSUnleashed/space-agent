@@ -4,7 +4,7 @@
 
 `_core/admin/` owns the firmware-backed admin area.
 
-It mounts into `/admin`, keeps admin UI assets on `L0`, provides the split admin-shell layout, and owns the current admin panels and admin-specific skill-loading runtime.
+It mounts into `/admin`, keeps admin UI assets on `L0`, provides the split admin-shell layout, and owns the current admin panels plus the admin-side runtime glue around shared agent prompt and skill helpers.
 
 Documentation is top priority for this module. After any change under `_core/admin/`, update this file, any affected deeper admin docs, and any affected parent docs in the same session.
 
@@ -88,20 +88,20 @@ Current shell responsibilities:
 High-level ownership:
 
 - `views/dashboard/` is the lightweight dashboard and launch surface
-- `views/agent/` is the admin-side chat or execution surface, owns `space.admin.loadSkill(...)`, and supports remote API transport plus a browser-local Hugging Face provider behind one shared admin loop
+- `views/agent/` is the admin-side chat or execution surface, owns `space.admin.loadSkill(...)` plus the admin-side `space.skills.load(...)` alias, reuses the standard prepared prompt builder shared with the onscreen agent through `_core/agent_prompt/`, and supports remote API transport plus a browser-local Hugging Face provider behind one shared admin loop
 - `views/files/` is the admin Files tab adapter; reusable file browsing, editing, creation, copy, move, delete, and download behavior is owned by `_core/file_explorer`
 - `views/time_travel/` is the admin Time Travel tab adapter; reusable history state, repository discovery, diffs, travel, revert, and injected refresh or repository controls are owned by `_core/time_travel`
 - `views/modules/` is the firmware-backed module list and removal surface
 
 ## Skills Contract
 
-Admin agent skills are discovered through the same shared browser-side skill helper as the onscreen agent, but the admin runtime explicitly resolves them with `maxLayer=0` so only firmware-backed skill files influence the admin prompt and `space.admin.loadSkill(...)`.
+Admin agent skills use the same shared browser-side discovery and prompt-shaping contract as the onscreen agent.
 
 Current rules:
 
-- `views/agent/skills.js` discovers top-level skill files through the shared `ext/skills` contract with an explicit `maxLayer=0` lookup
+- `views/agent/skills.js` exposes `space.admin.loadSkill(...)` for admin-owned code and mirrors that same loader onto `space.skills.load(...)` so the standard prepared prompt can keep its normal load hint
 - live page-owned `<x-context>` tags still filter that catalog the same way they do for the onscreen agent; the admin shell exports `admin`, and individual skills may use `metadata.when` and `metadata.loaded` as either `true` or `{ tags: [...] }` conditions plus `metadata.placement`
-- the admin agent prompt receives a compact catalog of those top-level skills plus the matching auto-loaded system or transient skill context for currently eligible `metadata.loaded` skills; auto-loaded skills do not enter history and fall back to `system` unless they explicitly set `transient`
+- the admin agent prompt now reuses the same standard catalog, auto-loaded skill, examples, history, and transient path that the onscreen agent uses; custom admin instructions are still appended last
 - the actual skill content is loaded on demand through `space.admin.loadSkill(name)`, with `history` placement entering ordinary execution-output history and `system` or `transient` placement registering runtime prompt context plus the short load-result text
 - keep skill folders stable and top-level if they should appear in the catalog
 - admin-owned skill files now live under `ext/skills/...` inside the owning module instead of a private `skills/` root

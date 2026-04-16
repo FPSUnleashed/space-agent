@@ -1,7 +1,7 @@
 import { createIsomorphicGitHistoryClient } from "./isomorphic_handler.js";
 import { createNativeGitHistoryClient } from "./native_handler.js";
 import { createNodeGitHistoryClient } from "./nodegit_handler.js";
-import { COMMIT_HASH_PATTERN, normalizeBackendName } from "./shared.js";
+import { COMMIT_HASH_PATTERN, resolveRequestedGitBackend } from "./shared.js";
 
 const HISTORY_BACKEND_FACTORIES = {
   native: createNativeGitHistoryClient,
@@ -26,8 +26,8 @@ function buildUnavailableBackendMessage(attempts) {
     .join("; ");
 }
 
-function resolveHistoryBackendOrder() {
-  const requestedBackend = normalizeBackendName(process.env.SPACE_GIT_BACKEND);
+function resolveHistoryBackendOrder(options = {}) {
+  const requestedBackend = resolveRequestedGitBackend(options);
 
   return {
     backendOrder: requestedBackend ? [requestedBackend] : DEFAULT_HISTORY_BACKEND_ORDER,
@@ -73,8 +73,12 @@ function normalizeCommitHash(value) {
   return commitHash;
 }
 
-async function createLocalGitHistoryClient({ repoRoot }) {
-  const { backendOrder, requestedBackend } = resolveHistoryBackendOrder();
+async function createLocalGitHistoryClient({ repoRoot, runtimeParams, backendName, env } = {}) {
+  const { backendOrder, requestedBackend } = resolveHistoryBackendOrder({
+    backendName,
+    env,
+    runtimeParams
+  });
   const attempts = [];
 
   for (const backendName of backendOrder) {

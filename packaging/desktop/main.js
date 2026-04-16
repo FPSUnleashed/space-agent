@@ -3,8 +3,13 @@ const { pathToFileURL } = require("node:url");
 const { app, BrowserWindow, ipcMain, net, webFrameMain } = require("electron");
 const {
   resolveDesktopAuthDataDir,
-  resolveDesktopServerTmpDir
+  resolveDesktopServerTmpDir,
+  resolvePackagedDesktopUserDataPath
 } = require("./server_storage_paths");
+const {
+  cleanupDesktopUpdaterArtifacts,
+  writeDesktopUpdaterInstallMarker
+} = require("./updater_artifacts");
 
 const DESKTOP_FRAME_PRELOAD_PATH = path.join(__dirname, "frame-preload.js");
 const DESKTOP_FRAME_INJECT_REGISTER_CHANNEL = "space-desktop:frame-inject-register";
@@ -36,6 +41,31 @@ let desktopUpdateState = {
   progress: null,
   version: ""
 };
+
+function applyPackagedDesktopUserDataOverride() {
+  if (!app.isPackaged) {
+    return "";
+  }
+
+  const currentUserDataPath = String(app.getPath("userData") || "").trim();
+  const nextUserDataPath = resolvePackagedDesktopUserDataPath({
+    appDataPath: app.getPath("appData"),
+    defaultUserDataPath: currentUserDataPath,
+    isPackaged: app.isPackaged
+  });
+
+  if (!nextUserDataPath || nextUserDataPath === currentUserDataPath) {
+    return currentUserDataPath;
+  }
+
+  app.setPath("userData", nextUserDataPath);
+  console.log(
+    `[space-desktop] Using legacy packaged userData path ${nextUserDataPath} to preserve existing runtime state.`
+  );
+  return nextUserDataPath;
+}
+
+applyPackagedDesktopUserDataOverride();
 
 function registerDesktopFramePreload(webContents) {
   if (!app.isPackaged || desktopFramePreloadRegistrationId) {
@@ -367,6 +397,48 @@ function setDesktopUpdateState(nextState = {}) {
 function prepareDesktopForQuit() {
   isQuitting = true;
 }
+
+async function cleanupStaleDesktopUpdaterArtifacts() {
+  let cleanupResult = null;
+
+  try {
+    cleanupResult = await cleanupDesktopUpdaterArtifacts({
+      isPackaged: app.isPackaged,
+      userDataPath: app.getPath("userData")
+    });
+  } catch (error) {
+    logDesktopUpdateEvent("Could not clean stale desktop updater artifacts.", {
+      level: "warn",
+      error
+    });
+    return {
+      cleaned: false,
+      clearedPaths: [],
+      marker: null,
+      markerPath: "",
+      removedRoots: [],
+      reason: "error"
+    };
+  }
+
+  if (!cleanupResult.cleaned) {
+    return cleanupResult;
+  }
+
+  const targetVersion = String(cleanupResult.marker?.targetVersion || "").trim();
+  const summary = cleanupResult.clearedPaths.length
+    ? cleanupResult.clearedPaths
+      .map((entry) => path.join(path.basename(path.dirname(entry)), path.basename(entry)))
+      .join(", ")
+    : "no pending payloads";
+  logDesktopUpdateEvent(
+    targetVersion
+      ? `Cleaned stale desktop updater artifacts after the previous install attempt for ${targetVersion} (${summary}).`
+      : `Cleaned stale desktop updater artifacts after the previous install attempt (${summary}).`
+  );
+  return cleanupResult;
+}
+
 
 function getDesktopRuntimeInfo() {
   const canCheckForUpdates = shouldEnableDesktopAutoUpdate() && Boolean(loadDesktopAutoUpdater());
@@ -704,8 +776,8 @@ async function installDesktopUpdate() {
     progress: null
   });
 
-  // Windows updates are more reliable when the embedded server runtime is fully closed
-  // before NSIS takes over, and the explicit install handoff stays on the silent path.
+  // Keep Windows updates on the silent NSIS restart path, but rely on the
+  // installer's registry identity instead of overriding the target directory here.
   const useSilentWindowsInstall = process.platform === "win32";
 
   try {
@@ -717,6 +789,19 @@ async function installDesktopUpdate() {
       reason: "error",
       message: formattedError.summary
     };
+  }
+
+  try {
+    await writeDesktopUpdaterInstallMarker({
+      fromVersion: app.getVersion(),
+      targetVersion: desktopUpdateState.version || "",
+      userDataPath: app.getPath("userData")
+    });
+  } catch (error) {
+    logDesktopUpdateEvent("Could not persist the desktop updater cleanup marker.", {
+      level: "warn",
+      error
+    });
   }
 
   // Electron emits before-quit after updater-triggered window close events on macOS,
@@ -741,6 +826,7 @@ function configureDesktopAutoUpdate() {
 
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = false;
+  autoUpdater.disableWebInstaller = true;
   autoUpdater.disableDifferentialDownload = true;
   autoUpdater.logger = console;
 
@@ -936,6 +1022,7 @@ async function stopServerRuntime() {
 
 async function startDesktop() {
   await app.whenReady();
+  await cleanupStaleDesktopUpdaterArtifacts();
   applyPackagedDesktopStorageOverrides();
   const runtimeParamOverrides = createDesktopRuntimeParamOverrides();
   const createAgentServer = await loadCreateAgentServer();

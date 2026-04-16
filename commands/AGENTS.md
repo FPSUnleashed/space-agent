@@ -99,6 +99,7 @@ Runtime resolution rules:
 - `CUSTOMWARE_PATH`, when non-empty, is the parent directory that contains backend `L1/` and `L2/` writable roots
 - `WORKERS` sets the number of HTTP worker processes for `serve` and `supervise`; `1` keeps the single-process runtime
 - `CUSTOMWARE_GIT_HISTORY` enables optional adaptive-debounced per-owner local Git history repositories for writable `L1` and `L2` roots; it defaults to `true`
+- `GIT_BACKEND` defaults to `auto` and selects the backend used by server-owned Git flows such as local history and Git-backed module installs; `auto` keeps the default `native -> nodegit -> isomorphic` fallback order
 - `USER_FOLDER_SIZE_LIMIT_BYTES` sets an optional byte cap for each on-disk `L2/<user>/` folder; `0` disables the cap
 - short-lived `user` and `group` commands flush pending local-history commits before returning when `CUSTOMWARE_GIT_HISTORY` is enabled
 
@@ -147,6 +148,7 @@ Current usage:
 - `node space serve PORT=0`
 - `node space serve WORKERS=4`
 - `node space serve PORT=3100 ALLOW_GUEST_USERS=false`
+- `node space serve GIT_BACKEND=isomorphic`
 
 Guidance:
 
@@ -154,6 +156,7 @@ Guidance:
 - keep `HOST=` and `PORT=` consistent with the rest of the runtime-param system instead of adding command-specific host or port flag aliases
 - keep `PORT=0` available as the explicit OS-assigned free-port mode used by the desktop host and other ephemeral local-runtime flows
 - keep `WORKERS` wired through the shared runtime-param schema instead of adding a separate cluster-only flag; the runtime uses one authoritative primary state host plus parallel HTTP workers
+- keep Git backend forcing in the shared runtime-param schema through `GIT_BACKEND` instead of inventing command-local Git flags; `auto` should remain the normal fallback path and concrete values should map to the shared backend abstraction in `server/lib/git/`
 - print the shared Git-derived project version on startup through `server/lib/utils/project_version.js`, while preserving the existing `space server listening at ...` line as a separate line for supervisor readiness parsing
 - prefer `node space set CUSTOMWARE_PATH=<path>` before user or group creation when documenting persistent writable-root setup, because launch-only `CUSTOMWARE_PATH=...` overrides affect only that `serve` process
 - do not move application behavior into the command when it belongs in `server/`

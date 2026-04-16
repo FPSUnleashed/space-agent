@@ -4,6 +4,7 @@ import path from "node:path";
 
 export const COMMIT_HASH_PATTERN = /^[0-9a-f]{7,40}$/i;
 export const SUPPORTED_GIT_BACKENDS = new Set(["native", "nodegit", "isomorphic"]);
+export const RUNTIME_GIT_BACKEND_PARAM = "GIT_BACKEND";
 
 export function createAvailableBackendResult(name, client) {
   return {
@@ -25,7 +26,7 @@ export function createSourceCheckoutError() {
   return new Error("The update command is only available for source installs in a real Git checkout.");
 }
 
-export function normalizeBackendName(rawValue) {
+export function normalizeBackendName(rawValue, options = {}) {
   if (!rawValue) {
     return null;
   }
@@ -35,13 +36,93 @@ export function normalizeBackendName(rawValue) {
     return null;
   }
 
+  const allowAuto = options.allowAuto === true;
+  if (allowAuto && normalizedValue === "auto") {
+    return null;
+  }
+
   if (!SUPPORTED_GIT_BACKENDS.has(normalizedValue)) {
+    const sourceLabel = String(options.sourceLabel || "git backend");
+    const expectedValues = allowAuto
+      ? ["auto", ...SUPPORTED_GIT_BACKENDS]
+      : [...SUPPORTED_GIT_BACKENDS];
+
     throw new Error(
-      `Unsupported SPACE_GIT_BACKEND value "${rawValue}". Expected one of: native, nodegit, isomorphic.`
+      `Unsupported ${sourceLabel} value "${rawValue}". Expected one of: ${expectedValues.join(", ")}.`
     );
   }
 
   return normalizedValue;
+}
+
+function resolveRuntimeParamBackendName(runtimeParams) {
+  if (!runtimeParams || typeof runtimeParams !== "object") {
+    return undefined;
+  }
+
+  if (typeof runtimeParams.getEntry === "function") {
+    const entry = runtimeParams.getEntry(RUNTIME_GIT_BACKEND_PARAM);
+    if (!entry || entry.value === undefined) {
+      return undefined;
+    }
+
+    const normalizedValue = normalizeBackendName(entry.value, {
+      allowAuto: true,
+      sourceLabel: RUNTIME_GIT_BACKEND_PARAM
+    });
+
+    if (entry.source === "default" && normalizedValue === null) {
+      return undefined;
+    }
+
+    return normalizedValue;
+  }
+
+  if (typeof runtimeParams.get === "function") {
+    const rawValue = runtimeParams.get(RUNTIME_GIT_BACKEND_PARAM, undefined);
+    if (rawValue === undefined) {
+      return undefined;
+    }
+
+    return normalizeBackendName(rawValue, {
+      allowAuto: true,
+      sourceLabel: RUNTIME_GIT_BACKEND_PARAM
+    });
+  }
+
+  return undefined;
+}
+
+export function resolveRequestedGitBackend(options = {}) {
+  if (Object.prototype.hasOwnProperty.call(options, "backendName") && options.backendName !== undefined) {
+    return normalizeBackendName(options.backendName, {
+      allowAuto: true,
+      sourceLabel: "git backend"
+    });
+  }
+
+  const runtimeBackend = resolveRuntimeParamBackendName(options.runtimeParams);
+  if (runtimeBackend !== undefined) {
+    return runtimeBackend;
+  }
+
+  const env = options.env || process.env;
+
+  if (env && Object.prototype.hasOwnProperty.call(env, RUNTIME_GIT_BACKEND_PARAM)) {
+    return normalizeBackendName(env[RUNTIME_GIT_BACKEND_PARAM], {
+      allowAuto: true,
+      sourceLabel: RUNTIME_GIT_BACKEND_PARAM
+    });
+  }
+
+  if (env && Object.prototype.hasOwnProperty.call(env, "SPACE_GIT_BACKEND")) {
+    return normalizeBackendName(env.SPACE_GIT_BACKEND, {
+      allowAuto: true,
+      sourceLabel: "SPACE_GIT_BACKEND"
+    });
+  }
+
+  return null;
 }
 
 export function normalizeBranchName(rawValue) {

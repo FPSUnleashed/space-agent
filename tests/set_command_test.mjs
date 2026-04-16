@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { __test as setCommandTest } from "../commands/set.js";
+import { resolveRequestedGitBackend } from "../server/lib/git/shared.js";
+import { createRuntimeParams, loadParamSpecs, validateConfigValue } from "../server/lib/utils/runtime_params.js";
 
 test("set parses one or more KEY=VALUE assignments", () => {
   assert.deepEqual(setCommandTest.parseSetArgs(["HOST=127.0.0.1"]), [
@@ -26,6 +28,46 @@ test("set rejects non assignment arguments", () => {
   assert.throws(() => {
     setCommandTest.parseSetArgs(["HOST", "127.0.0.1"]);
   }, /Expected KEY=VALUE/);
+});
+
+test("runtime params schema exposes GIT_BACKEND with auto default", async () => {
+  const specs = await loadParamSpecs("/workspace/agent-one");
+  const spec = specs.find((entry) => entry.name === "GIT_BACKEND");
+
+  assert.ok(spec);
+  assert.equal(spec.defaultValue, "auto");
+  assert.deepEqual(spec.allowed, ["auto", "native", "nodegit", "isomorphic"]);
+  assert.equal(validateConfigValue(spec, "nodegit"), "nodegit");
+  assert.throws(() => {
+    validateConfigValue(spec, "unsupported");
+  }, /GIT_BACKEND must match one of/);
+});
+
+test("runtime params and env resolve requested git backend", async () => {
+  const runtimeParams = await createRuntimeParams("/workspace/agent-one", {
+    env: {},
+    overrides: {
+      GIT_BACKEND: "nodegit"
+    },
+    storedValues: {}
+  });
+
+  assert.equal(resolveRequestedGitBackend({ runtimeParams }), "nodegit");
+  assert.equal(resolveRequestedGitBackend({ backendName: undefined, runtimeParams }), "nodegit");
+
+  const autoRuntimeParams = await createRuntimeParams("/workspace/agent-one", {
+    env: {},
+    overrides: {},
+    storedValues: {}
+  });
+
+  assert.equal(
+    resolveRequestedGitBackend({
+      env: { SPACE_GIT_BACKEND: "isomorphic" },
+      runtimeParams: autoRuntimeParams
+    }),
+    "isomorphic"
+  );
 });
 
 test("set apply helper executes assignments in order", async () => {

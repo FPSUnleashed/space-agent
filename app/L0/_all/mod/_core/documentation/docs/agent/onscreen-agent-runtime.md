@@ -4,11 +4,13 @@ This doc covers the floating routed overlay agent as a frontend runtime surface.
 
 ## Primary Sources
 
+- `app/L0/_all/mod/_core/agent_prompt/AGENTS.md`
 - `app/L0/_all/mod/_core/onscreen_agent/AGENTS.md`
 - `app/L0/_all/mod/_core/onscreen_agent/prompts/AGENTS.md`
 - `app/L0/_all/mod/_core/promptinclude/AGENTS.md`
 - `app/L0/_all/mod/_core/open_router/AGENTS.md`
 - `app/L0/_all/mod/_core/onscreen_agent/store.js`
+- `app/L0/_all/mod/_core/agent_prompt/prompt-runtime.js`
 - `app/L0/_all/mod/_core/onscreen_agent/llm.js`
 - `app/L0/_all/mod/_core/onscreen_agent/execution.js`
 - `app/L0/_all/mod/_core/onscreen_agent/skills.js`
@@ -21,6 +23,7 @@ This doc covers the floating routed overlay agent as a frontend runtime surface.
 - the floating shell UI and compact bubble UI
 - chat history, overlay config persistence, and browser-stored overlay UI state
 - prompt assembly and prompt history previews
+- the overlay-specific prompt builders layered on top of the shared `_core/agent_prompt/prompt-runtime.js` lifecycle
 - attachment handling
 - the execution loop and streamed execution cards
 - onscreen skill discovery and `space.skills.load(...)`
@@ -33,7 +36,7 @@ Current persisted files:
 - browser UI state: `sessionStorage["space.onscreenAgent.uiState"]` with `localStorage["space.onscreenAgent.uiState"]` as fallback
 - history: `~/hist/onscreen-agent.json`
 
-The stored overlay config keeps `api_key` encrypted at rest when `space.utils.userCrypto` is unlocked for the current browser session. Encrypted values are stored as `userCrypto:`-prefixed strings in `~/conf/onscreen-agent.yaml`, decrypted automatically on load, and fail soft to a blank locked field when the current session cannot decrypt them. In `SINGLE_USER_APP=true`, `space.utils.userCrypto` bypasses encryption entirely, so `api_key` stays plaintext and no `userCrypto:` wrapper is added.
+The stored overlay config keeps `api_key` encrypted at rest when `space.utils.userCrypto` is unlocked for the current browser session. Encrypted values are stored as `userCrypto:`-prefixed strings in `~/conf/onscreen-agent.yaml`, decrypted automatically on load, and fail soft to a blank locked field when the current session cannot decrypt them. In `SINGLE_USER_APP=true`, `space.utils.userCrypto` bypasses encryption entirely, so new `api_key` values stay plaintext and no `userCrypto:` wrapper is added, but any legacy wrapped value from an older non-single-user build still loads as a blank locked field until the user replaces or clears it.
 
 Important config fields:
 
@@ -98,6 +101,7 @@ That shared history styling resets rendered markdown bubbles back to normal whit
 The settings and prompt-history dialogs reuse the shared `_core/visual/forms/dialog.css` shell layout. Their header and footer rows stay fixed while only the settings body or prompt-history frame scrolls, so the footer actions remain reachable even when the content is long.
 
 Caught overlay runtime errors are logged through `console.error` and shown through the shared toast stack from `_core/visual/chrome/toast.js`. The composer placeholder still belongs to ready-state and lightweight status guidance, so raw exception text should not be pushed into the textarea placeholder.
+Overlay execution transcripts now use the shared YAML-first formatter for both console logs and returned values, emitting block headers such as `log↓`, `warn↓`, `error↓`, and `result↓` so structured telemetry stays complete across the thread and execution cards.
 
 The settings dialog now has two provider tabs named `API` and `Local`. `API` keeps the OpenAI-compatible endpoint, model, and key fields. `Local` mounts the shared Hugging Face config sidebar in onscreen mode, so the overlay reads the same saved-model list and live WebGPU worker state as the routed Local LLM page and the admin chat. Opening the Local tab should refresh saved-model shortcuts without booting the worker; saving local settings persists the selected repo id and dtype, then starts background model preparation. When no local model is selected and saved models exist, the Local panel preselects the browser-wide last successfully loaded saved model from `_core/huggingface/manager.js`, falling back to the first saved entry if that last-used entry was discarded. When no local model is selected, no local model is loaded, and the shared saved-model list is empty, the Local panel prefills the Hugging Face model field with the same testing-page default: `onnx-community/gemma-4-E4B-it-ONNX`.
 
@@ -113,7 +117,7 @@ Those same launchers may also call `showExamplePromptInactiveBubble()` on the gl
 
 For remote API mode, `_core/onscreen_agent/api.js` now finalizes the upstream fetch request through extension seam `_core/onscreen_agent/api.js/prepareOnscreenAgentApiRequest`. Provider-specific request policy such as OpenRouter headers belongs in headless helper modules like `_core/open_router`, so prompt assembly in `llm.js` no longer hardcodes those headers.
 
-Local Hugging Face sends use the compact `LOCAL_ONSCREEN_AGENT_SYSTEM_PROMPT` profile from `llm.js` rather than the full firmware prompt plus skill catalog. The normal overlay history, transient context, execution loop, prompt inspection, and custom instructions still apply. The actual local-runtime request should reuse the same folded transport messages that the API path would send upstream, while prompt inspection keeps showing the richer pre-fold prepared payload.
+Local Hugging Face sends now use the same onscreen-agent prompt assembly path as remote API sends, so the firmware prompt, prompt includes, skill catalog, auto-loaded skill context, custom instructions, history, and transient context stay aligned across providers. The actual local-runtime request should still reuse the same folded transport messages that the API path would send upstream, while prompt inspection keeps showing the richer pre-fold prepared payload. The routed `/huggingface` testing page remains separate and uses only its local plain system-prompt-plus-chat surface.
 
 Dragging the astronaut past the left, right, or bottom viewport edge now first hits a dead zone at the in-screen clamp that matches the reveal-threshold distance so corner placement stays practical, then snaps the shell into a hidden peeking pose on that edge after the pointer crosses that extra distance. Top-edge hiding is disabled entirely. In the enabled hidden states the shell hide math follows the full rendered astronaut bounds and now keeps roughly 60 percent of the astronaut visible with one uniform inset. On fine-pointer desktops the drag hitbox stays the same size as the visible astronaut so the image cannot drift away from the interactive box. The normal right-side flip still applies while hidden, the hidden-state avatar image shadow is suppressed so the visible silhouette does not look larger on right or bottom hides than it does on the left, and the chat body collapses away while the hidden panel and history surfaces stop intercepting clicks or wheel scrolling until a click or drag back past the reveal threshold restores the previous compact or full chat body.
 

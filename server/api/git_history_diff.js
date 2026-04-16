@@ -1,6 +1,12 @@
 import { createHttpError } from "../lib/customware/file_access.js";
 import { getLayerHistoryCommitDiff } from "../lib/customware/git_history.js";
 
+function rethrowGitHistoryHttpError(error, fallbackMessage) {
+  const httpError = createHttpError(error.message || fallbackMessage, Number(error.statusCode) || 500);
+  httpError.cause = error;
+  throw httpError;
+}
+
 function readPayload(context) {
   return context.body && typeof context.body === "object" && !Buffer.isBuffer(context.body)
     ? context.body
@@ -40,9 +46,9 @@ function readFilePath(context) {
   );
 }
 
-function handleDiff(context) {
+async function handleDiff(context) {
   try {
-    return getLayerHistoryCommitDiff({
+    return await getLayerHistoryCommitDiff({
       commitHash: readCommitHash(context),
       filePath: readFilePath(context),
       path: readPath(context),
@@ -52,14 +58,14 @@ function handleDiff(context) {
       watchdog: context.watchdog
     });
   } catch (error) {
-    throw createHttpError(error.message || "Git history diff failed.", Number(error.statusCode) || 500);
+    rethrowGitHistoryHttpError(error, "Git history diff failed.");
   }
 }
 
-export function get(context) {
+export async function get(context) {
   return handleDiff(context);
 }
 
-export function post(context) {
+export async function post(context) {
   return handleDiff(context);
 }

@@ -359,7 +359,8 @@ async function readModuleGitInfo(options = {}) {
 
   try {
     const gitClient = await createGitClient({
-      projectRoot: absolutePath
+      projectRoot: absolutePath,
+      runtimeParams: options.runtimeParams
     });
     const [currentBranch, remoteUrl, headCommit, shortCommit] = await Promise.all([
       gitClient.readCurrentBranch(),
@@ -495,12 +496,14 @@ async function installIntoNewPath(targetPathInfo, options = {}) {
         token: options.token
       },
       remoteUrl: options.repoUrl,
+      runtimeParams: options.runtimeParams,
       targetDir: tempAbsolutePath
     });
 
     if (options.tag || options.commit) {
       const gitClient = await createGitClient({
-        projectRoot: tempAbsolutePath
+        projectRoot: tempAbsolutePath,
+        runtimeParams: options.runtimeParams
       });
       const remoteUrl = await ensureRemoteConfig(gitClient, options.repoUrl);
 
@@ -548,7 +551,8 @@ async function updateExistingPath(targetPathInfo, options = {}) {
 
   try {
     gitClient = await createGitClient({
-      projectRoot: targetPathInfo.absolutePath
+      projectRoot: targetPathInfo.absolutePath,
+      runtimeParams: options.runtimeParams
     });
   } catch (error) {
     throw createHttpError(
@@ -641,7 +645,8 @@ async function resolveInstalledLocations(options = {}) {
       canWrite: entry.canWrite,
       effective: selectedEntryMap.has(entry.projectPath),
       git: await readModuleGitInfo({
-        absolutePath: createAbsolutePath(options.projectRoot, entry.projectPath, options.runtimeParams)
+        absolutePath: createAbsolutePath(options.projectRoot, entry.projectPath, options.runtimeParams),
+        runtimeParams: options.runtimeParams
       }),
       layer: entry.layer,
       ownerId: entry.ownerId,
@@ -795,7 +800,8 @@ async function listInstalledModules(options = {}) {
               options.projectRoot,
               representativeEntry.projectPath,
               options.runtimeParams
-            )
+            ),
+            runtimeParams: options.runtimeParams
           }),
           id: createModuleListItemId(groupedEntry, {
             aggregated: true,
@@ -823,7 +829,8 @@ async function listInstalledModules(options = {}) {
       canRead: entry.canRead,
       canWrite: entry.canWrite,
       git: await readModuleGitInfo({
-        absolutePath: createAbsolutePath(options.projectRoot, entry.projectPath, options.runtimeParams)
+        absolutePath: createAbsolutePath(options.projectRoot, entry.projectPath, options.runtimeParams),
+        runtimeParams: options.runtimeParams
       }),
       id: createModuleListItemId(entry, {
         area

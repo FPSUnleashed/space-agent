@@ -69,13 +69,14 @@ Current contract:
 Current contract:
 
 - the parameter defaults to `true`
+- `GIT_BACKEND` defaults to `auto` for local history and other server-owned Git flows; `auto` keeps the shared `native -> nodegit -> isomorphic` fallback order, while concrete values force one backend for local testing or troubleshooting
 - each writable `L1/<group>/` and `L2/<user>/` root is its own local Git repository when history is enabled
 - mutations schedule a commit after 10 seconds of quiet for that owner root
 - in clustered runtime, workers do not keep their own debounced Git commit timers; they publish changed logical paths once, and the primary schedules the owner-root commit after rebuilding the authoritative indexes for that change
-- the native local-history backend runs Git asynchronously and serializes operations per owner repository, so debounced commits and other history actions for one root never overlap and do not block the request path while the subprocess runs
+- local-history backends serialize operations per owner repository, so debounced commits and other history actions for one root never overlap; native keeps subprocess work asynchronous, and the isomorphic fallback reuses immutable history-entry and tree caches for repeated Time Travel reads
 - if an owner root keeps receiving writes, the debounce drops to 5 seconds after 1 minute of waiting, 1 second after 5 minutes, and immediate commit after 10 minutes
 - pending commits are flushed during server shutdown
-- history listing is paginated with `limit` and `offset`, may filter by changed file path or nested filename substring, and returns metadata plus full per-commit file action entries for listed commits without loading full diffs
+- history listing is paginated with `limit` and `offset`, may filter by changed file path or nested filename substring, returns metadata plus full per-commit file action entries for listed commits without loading full diffs, and may return `total: null` for filtered pages when `hasMore` is already known without a full scan
 - repository discovery for browser pickers goes through `file_list` or `file_paths` with `gitRepositories: true` and, when needed, `access: "write"`; the response contains writable owner roots such as `L1/<group>/` and `L2/<user>/`, never `.git` metadata paths
 - file diff reads, operation previews, and commit revert operations are separate history helper calls
 - operation previews require write access and return affected-file metadata for travel or revert, plus an operation-specific patch when a single file is requested
@@ -122,7 +123,7 @@ Resolution rules:
 
 ## `maxLayer`
 
-`maxLayer` limits module and extension lookup, not normal app-file APIs. The narrow first-party exception is explicit module-oriented `file_paths` discovery when a caller passes `maxLayer` intentionally, such as the admin agent's firmware-clamped `ext/skills` catalog lookup.
+`maxLayer` limits module and extension lookup, not normal app-file APIs. The narrow first-party exception is explicit module-oriented `file_paths` discovery when a caller passes `maxLayer` intentionally, such as the dashboard panel index resolving readable `mod/*/*/ext/panels/*.yaml` files before batch-reading them through `file_read`.
 
 Examples:
 

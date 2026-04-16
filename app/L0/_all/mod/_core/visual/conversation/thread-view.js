@@ -1,7 +1,7 @@
 import { renderMarkdown } from "/mod/_core/framework/js/markdown-frontmatter.js";
 
 const EXECUTION_STATUS_LINE_PATTERN = /^execution\s+(.+)$/iu;
-const EXECUTION_PRINT_LINE_PATTERN = /^(log|info|warn|error|debug|dir|table|assert):\s*/iu;
+const EXECUTION_PRINT_LINE_PATTERN = /^(log|info|warn|error|debug|dir|table|assert)(:\s*|↓)$/iu;
 const ORDERED_LIST_LINE_PATTERN = /^\d+\.\s+/u;
 const STICKY_SCROLL_THRESHOLD = 96;
 
@@ -205,15 +205,15 @@ export function createAgentThreadView(config = {}) {
       return "is-meta";
     }
 
-    if (/^result:\s*/iu.test(trimmed)) {
+    if (/^result(?::\s*|↓)$/iu.test(trimmed)) {
       return "is-result";
     }
 
-    if (/^warn:\s*/iu.test(trimmed)) {
+    if (/^warn(?::\s*|↓)$/iu.test(trimmed)) {
       return "is-warn";
     }
 
-    if (/^error:\s*/iu.test(trimmed)) {
+    if (/^error(?::\s*|↓)$/iu.test(trimmed)) {
       return "is-error";
     }
 

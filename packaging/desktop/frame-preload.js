@@ -1,8 +1,9 @@
-const { ipcRenderer } = require("electron");
+const { contextBridge, ipcRenderer } = require("electron");
 
 const FRAME_INJECT_REGISTER_CHANNEL = "space-desktop:frame-inject-register";
 const INJECT_ATTRIBUTE = "data-space-inject";
 const FRAME_SELECTOR = `iframe[${INJECT_ATTRIBUTE}]`;
+const SHADOW_OVERRIDE_FLAG = "__spaceDesktopShadowRootOverrideInstalled__";
 let nextGeneratedFrameName = 1;
 let syncScheduled = false;
 let documentObserver = null;
@@ -83,6 +84,35 @@ function installDocumentObserver() {
   });
 }
 
+function installSubframeShadowRootOverride() {
+  if (process.isMainFrame || typeof contextBridge?.executeInMainWorld !== "function") {
+    return;
+  }
+
+  try {
+    contextBridge.executeInMainWorld({
+      func: (flagKey) => {
+        if (globalThis[flagKey] || typeof globalThis.Element?.prototype?.attachShadow !== "function") {
+          return;
+        }
+
+        const originalAttachShadow = globalThis.Element.prototype.attachShadow;
+        globalThis.Element.prototype.attachShadow = function attachShadow(options) {
+          const shadowOptions = options && typeof options === "object"
+            ? { ...options, mode: "open" }
+            : { mode: "open" };
+
+          return originalAttachShadow.call(this, shadowOptions);
+        };
+        globalThis[flagKey] = true;
+      },
+      args: [SHADOW_OVERRIDE_FLAG]
+    });
+  } catch (error) {
+    console.error("[space-desktop/frame-preload] Failed to install subframe shadow-root override.", error);
+  }
+}
+
 function installFrameRegistrySync() {
   if (!process.isMainFrame) {
     return;
@@ -105,4 +135,5 @@ function installFrameRegistrySync() {
   }, { once: true });
 }
 
+installSubframeShadowRootOverride();
 installFrameRegistrySync();

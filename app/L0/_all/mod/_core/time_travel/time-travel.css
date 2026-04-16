@@ -577,6 +577,43 @@
   font-size: 2rem;
 }
 
+.time-travel-action-error-copy {
+  display: grid;
+  gap: 0.65rem;
+  max-width: min(100%, 42rem);
+  text-align: left;
+}
+
+.time-travel-action-error-copy p {
+  margin: 0;
+}
+
+.time-travel-action-error-hint {
+  color: var(--color-text-secondary);
+}
+
+.time-travel-action-error-details {
+  width: 100%;
+}
+
+.time-travel-action-error-details summary {
+  cursor: pointer;
+  color: #79edd8;
+}
+
+.time-travel-action-error-details pre {
+  margin: 0.7rem 0 0;
+  padding: 0.85rem 1rem;
+  border: 1px solid rgba(121, 237, 216, 0.16);
+  border-radius: 0.9rem;
+  background: rgba(0, 0, 0, 0.24);
+  color: var(--color-text-secondary);
+  font: 0.78rem/1.5 var(--font-family-mono, monospace);
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .time-travel-actions {
   padding: 0.82rem 1rem;
   border-top: 1px solid rgba(255, 255, 255, 0.075);

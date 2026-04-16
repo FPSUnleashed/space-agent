@@ -2,7 +2,7 @@ import { createIsomorphicGitClient, createIsomorphicGitCloneClient } from "./iso
 import { createNativeGitClient, createNativeGitCloneClient } from "./native_handler.js";
 import { createNodeGitClient, createNodeGitCloneClient } from "./nodegit_handler.js";
 import { assertGitClient } from "./client_interface.js";
-import { normalizeBackendName, resolveGitContext } from "./shared.js";
+import { resolveGitContext, resolveRequestedGitBackend } from "./shared.js";
 
 const BACKEND_FACTORIES = {
   native: createNativeGitClient,
@@ -24,8 +24,8 @@ function buildUnavailableBackendMessage(attempts) {
     .join("; ");
 }
 
-function resolveBackendOrder() {
-  const requestedBackend = normalizeBackendName(process.env.SPACE_GIT_BACKEND);
+function resolveBackendOrder(options = {}) {
+  const requestedBackend = resolveRequestedGitBackend(options);
 
   return {
     backendOrder: requestedBackend ? [requestedBackend] : DEFAULT_BACKEND_ORDER,
@@ -33,9 +33,13 @@ function resolveBackendOrder() {
   };
 }
 
-export async function createGitClient({ projectRoot }) {
+export async function createGitClient({ projectRoot, runtimeParams, backendName, env } = {}) {
   const gitContext = await resolveGitContext(projectRoot);
-  const { backendOrder, requestedBackend } = resolveBackendOrder();
+  const { backendOrder, requestedBackend } = resolveBackendOrder({
+    backendName,
+    env,
+    runtimeParams
+  });
   const attempts = [];
 
   for (const backendName of backendOrder) {
@@ -56,8 +60,19 @@ export async function createGitClient({ projectRoot }) {
   throw new Error(`Update could not initialize a Git backend: ${message}`);
 }
 
-export async function cloneGitRepository({ authOptions = {}, remoteUrl, targetDir }) {
-  const { backendOrder, requestedBackend } = resolveBackendOrder();
+export async function cloneGitRepository({
+  authOptions = {},
+  remoteUrl,
+  targetDir,
+  runtimeParams,
+  backendName,
+  env
+} = {}) {
+  const { backendOrder, requestedBackend } = resolveBackendOrder({
+    backendName,
+    env,
+    runtimeParams
+  });
   const attempts = [];
 
   for (const backendName of backendOrder) {

@@ -2978,10 +2978,7 @@ const model = {
   },
 
   getPromptBuildOptions() {
-    return {
-      localProfile:
-        config.normalizeOnscreenAgentLlmProvider(this.settings.provider) === config.ONSCREEN_AGENT_LLM_PROVIDER.LOCAL
-    };
+    return {};
   },
 
   ensurePromptRuntime() {

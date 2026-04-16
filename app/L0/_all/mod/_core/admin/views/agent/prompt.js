@@ -1,4 +1,10 @@
-import * as skills from "/mod/_core/admin/views/agent/skills.js";
+import {
+  buildOnscreenAgentPromptInput
+} from "/mod/_core/onscreen_agent/llm.js";
+import {
+  createAgentPromptInstance,
+  hasPreparedPromptInput
+} from "/mod/_core/agent_prompt/prompt-runtime.js";
 
 export const DEFAULT_ADMIN_SYSTEM_PROMPT_PATH = "/mod/_core/admin/views/agent/system-prompt.md";
 export const ADMIN_HISTORY_COMPACT_MODE = Object.freeze({
@@ -7,14 +13,6 @@ export const ADMIN_HISTORY_COMPACT_MODE = Object.freeze({
 });
 export const ADMIN_HISTORY_COMPACT_PROMPT_PATH = "/mod/_core/admin/views/agent/compact-prompt.md";
 export const ADMIN_HISTORY_AUTO_COMPACT_PROMPT_PATH = "/mod/_core/admin/views/agent/compact-prompt-auto.md";
-export const LOCAL_ADMIN_SYSTEM_PROMPT = [
-  "You are the Space Agent Admin assistant running in the browser admin UI.",
-  "Be concise, practical, and task-focused.",
-  "When runtime action is needed, reply with exactly `_____javascript` on its own line, followed only by JavaScript until the end of the message.",
-  "Use top-level await directly.",
-  "Available runtime tools include `space.api`, `space.chat`, `fetch`, `window`, `document`, and `localStorage`.",
-  "After execution results return, continue the task. Do not claim you lack browser, file, or live-data access."
-].join("\n");
 
 let defaultSystemPromptPromise = null;
 const compactPromptPromises = {
@@ -24,16 +22,6 @@ const compactPromptPromises = {
 
 function normalizeSystemPrompt(systemPrompt = "") {
   return typeof systemPrompt === "string" ? systemPrompt.trim() : "";
-}
-
-function formatCustomUserInstructions(systemPrompt = "") {
-  const customPrompt = normalizeSystemPrompt(systemPrompt);
-
-  if (!customPrompt) {
-    return "";
-  }
-
-  return `## User specific instructions\n\n${customPrompt}`;
 }
 
 function stripDefaultPromptPrefix(storedPrompt, defaultSystemPrompt) {
@@ -139,62 +127,90 @@ export function extractCustomAdminSystemPrompt(storedPrompt = "", defaultSystemP
   return stripDefaultPromptPrefix(storedPrompt, defaultSystemPrompt);
 }
 
-export async function buildAdminPromptContext(systemPrompt = "", options = {}) {
-  if (options.localProfile === true) {
-    const customPrompt = formatCustomUserInstructions(systemPrompt);
-    const skillPromptContext = await skills.buildAdminSkillPromptContext({
-      includeAutoLoaded: false,
-      includeCatalog: false,
-      includeRuntimeLoaded: true
-    });
-    const sections = [
-      LOCAL_ADMIN_SYSTEM_PROMPT,
-      customPrompt,
-      skillPromptContext.loadedSkillsSection
-    ].filter(Boolean);
-
-    return {
-      loadedSkillsSection: skillPromptContext.loadedSkillsSection,
-      skillsSection: "",
-      systemPrompt: sections.join("\n\n"),
-      systemPromptSections: sections,
-      transientSections: Array.isArray(skillPromptContext.loadedTransientSections)
-        ? skillPromptContext.loadedTransientSections
-        : []
-    };
-  }
-
-  const basePrompt = normalizeSystemPrompt(
-    options.defaultSystemPrompt || (await fetchDefaultAdminSystemPrompt())
-  );
-  const customPrompt = formatCustomUserInstructions(systemPrompt);
-  const skillPromptContext = await skills.buildAdminSkillPromptContext();
-  const sections = [
-    basePrompt,
-    customPrompt,
-    skillPromptContext.catalogSection,
-    skillPromptContext.autoLoadedSkillsSection,
-    skillPromptContext.loadedSkillsSection
-  ].filter(Boolean);
+function buildAdminPromptOptions(options = {}) {
+  const normalizedOptions =
+    options && typeof options === "object" && !Array.isArray(options)
+      ? { ...options }
+      : {};
 
   return {
-    autoLoadedSkillsSection: skillPromptContext.autoLoadedSkillsSection,
-    loadedSkillsSection: skillPromptContext.loadedSkillsSection,
-    skillsSection: skillPromptContext.catalogSection,
-    systemPrompt: sections.join("\n\n"),
-    systemPromptSections: sections,
-    transientSections: [
-      ...(Array.isArray(skillPromptContext.autoLoadedTransientSections)
-        ? skillPromptContext.autoLoadedTransientSections
-        : []),
-      ...(Array.isArray(skillPromptContext.loadedTransientSections)
-        ? skillPromptContext.loadedTransientSections
-        : [])
-    ]
+    ...normalizedOptions,
+    customPromptPlacement: "end"
   };
+}
+
+export function createAdminPromptInstance(options = {}) {
+  return createAgentPromptInstance({
+    ...options,
+    buildPromptInput: async (context) => buildOnscreenAgentPromptInput(context),
+    options: buildAdminPromptOptions(options.options)
+  });
+}
+
+export async function buildAdminPromptInput(options = {}) {
+  const normalizedOptions =
+    options && typeof options === "object" && !Array.isArray(options)
+      ? options
+      : {};
+  const historyMessages = Array.isArray(normalizedOptions.historyMessages)
+    ? normalizedOptions.historyMessages
+    : Array.isArray(normalizedOptions.messages)
+      ? normalizedOptions.messages
+      : [];
+  const promptOptions = buildAdminPromptOptions(normalizedOptions.options);
+  const promptContext = {
+    ...normalizedOptions,
+    historyMessages,
+    messages: historyMessages,
+    options: promptOptions
+  };
+  const promptInstance = normalizedOptions.promptInstance;
+
+  if (promptInstance && typeof promptInstance.updateHistory === "function" && hasPreparedPromptInput(promptInstance)) {
+    return promptInstance.updateHistory(historyMessages, {
+      defaultSystemPrompt: normalizedOptions.defaultSystemPrompt,
+      options: promptOptions,
+      systemPrompt: normalizedOptions.systemPrompt,
+      transientSections: normalizedOptions.transientSections
+    });
+  }
+
+  if (promptInstance && typeof promptInstance.build === "function") {
+    return promptInstance.build(promptContext);
+  }
+
+  return buildOnscreenAgentPromptInput(promptContext);
+}
+
+export async function buildAdminPromptContext(systemPrompt = "", options = {}) {
+  const defaultSystemPrompt = normalizeSystemPrompt(
+    options.defaultSystemPrompt || (await fetchDefaultAdminSystemPrompt())
+  );
+
+  return buildAdminPromptInput({
+    defaultSystemPrompt,
+    historyMessages: Array.isArray(options.historyMessages)
+      ? options.historyMessages
+      : Array.isArray(options.messages)
+        ? options.messages
+        : [],
+    options: options.options,
+    promptInstance: options.promptInstance,
+    systemPrompt,
+    transientSections: options.transientSections
+  });
+}
+
+export async function buildAdminPromptMessages(systemPrompt = "", messages = [], options = {}) {
+  const promptInput = await buildAdminPromptContext(systemPrompt, {
+    ...options,
+    historyMessages: Array.isArray(messages) ? messages : []
+  });
+
+  return Array.isArray(promptInput?.requestMessages) ? promptInput.requestMessages : [];
 }
 
 export async function buildRuntimeAdminSystemPrompt(systemPrompt = "", options = {}) {
   const promptContext = await buildAdminPromptContext(systemPrompt, options);
-  return promptContext.systemPrompt;
+  return typeof promptContext?.systemPrompt === "string" ? promptContext.systemPrompt : "";
 }

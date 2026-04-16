@@ -215,12 +215,28 @@ function collectLayerHistoryTargets(options = {}, projectPaths = []) {
       runtimeParams: options.runtimeParams
     });
 
-    if (target) {
-      targetsByKey.set(target.key, target);
+    if (!target) {
+      continue;
     }
+
+    const pathInfo = parseAppProjectPath(projectPath);
+    const changedPathHint = stripTrailingSlash(pathInfo?.pathWithinOwner || "");
+    const entry = targetsByKey.get(target.key) || {
+      ...target,
+      changedPathsHint: new Set()
+    };
+
+    if (changedPathHint) {
+      entry.changedPathsHint.add(changedPathHint);
+    }
+
+    targetsByKey.set(target.key, entry);
   }
 
-  return [...targetsByKey.values()];
+  return [...targetsByKey.values()].map((target) => ({
+    ...target,
+    changedPathsHint: [...target.changedPathsHint].sort((left, right) => left.localeCompare(right))
+  }));
 }
 
 function getSortedWatchdogProjectPaths(watchdog) {
@@ -332,7 +348,12 @@ function normalizeHistoryListResult(result, options = {}) {
     hasMore: Boolean(result?.hasMore),
     limit: Number.isFinite(Number(result?.limit)) ? Number(result.limit) : limit,
     offset: Number.isFinite(Number(result?.offset)) ? Number(result.offset) : offset,
-    total: Number.isFinite(Number(result?.total)) ? Number(result.total) : null
+    total:
+      result?.total === null
+        ? null
+        : Number.isFinite(Number(result?.total))
+          ? Number(result.total)
+          : null
   };
 }
 
@@ -457,16 +478,18 @@ function restoreIgnoredPathSnapshots(snapshots) {
   }
 }
 
-async function commitLayerHistoryTarget(target) {
+async function commitLayerHistoryTarget(target, options = {}) {
   try {
     ensureHistoryIgnoreFile(target);
 
     const client = await createLocalGitHistoryClient({
-      repoRoot: target.repoRoot
+      repoRoot: target.repoRoot,
+      runtimeParams: target.runtimeParams
     });
     const result = await client.commitAll({
       authorEmail: DEFAULT_AUTHOR_EMAIL,
       authorName: DEFAULT_AUTHOR_NAME,
+      changedPathsHint: options.changedPathsHint || target.changedPathsHint,
       ignoredPaths: getHistoryIgnoredPaths(target),
       message: getHistoryCommitMessage(target)
     });
@@ -494,12 +517,22 @@ function scheduleLayerHistoryTarget(target, options = {}) {
     now - firstScheduledAt,
     options.debounceMs ?? DEFAULT_COMMIT_DEBOUNCE_MS
   );
+  const changedPathsHint = new Set(currentEntry?.changedPathsHint || []);
+
+  for (const changedPathHint of options.changedPathsHint || target.changedPathsHint || []) {
+    const normalizedChangedPath = stripTrailingSlash(changedPathHint || "");
+
+    if (normalizedChangedPath) {
+      changedPathsHint.add(normalizedChangedPath);
+    }
+  }
 
   if (currentEntry?.timer) {
     clearTimeout(currentEntry.timer);
   }
 
   const entry = {
+    changedPathsHint: [...changedPathsHint].sort((left, right) => left.localeCompare(right)),
     firstScheduledAt,
     target,
     timer: null
@@ -507,7 +540,9 @@ function scheduleLayerHistoryTarget(target, options = {}) {
 
   if (debounceMs === 0) {
     pendingCommits.delete(target.key);
-    void commitLayerHistoryTarget(target).catch((error) => {
+    void commitLayerHistoryTarget(target, {
+      changedPathsHint: entry.changedPathsHint
+    }).catch((error) => {
       console.error(`Failed to commit Git history for ${target.appPath}.`);
       console.error(error);
     });
@@ -516,7 +551,9 @@ function scheduleLayerHistoryTarget(target, options = {}) {
 
   entry.timer = setTimeout(() => {
     pendingCommits.delete(target.key);
-    void commitLayerHistoryTarget(target).catch((error) => {
+    void commitLayerHistoryTarget(target, {
+      changedPathsHint: entry.changedPathsHint
+    }).catch((error) => {
       console.error(`Failed to commit Git history for ${target.appPath}.`);
       console.error(error);
     });
@@ -582,7 +619,9 @@ async function flushGitHistoryTarget(target, options = {}) {
   pendingCommits.delete(target.key);
 
   try {
-    return await commitLayerHistoryTarget(entry.target);
+    return await commitLayerHistoryTarget(entry.target, {
+      changedPathsHint: entry.changedPathsHint
+    });
   } catch (error) {
     if (options.throwOnError) {
       throw error;
@@ -639,7 +678,8 @@ async function listLayerHistoryCommits(options = {}) {
   }
 
   const client = await createLocalGitHistoryClient({
-    repoRoot: target.repoRoot
+    repoRoot: target.repoRoot,
+    runtimeParams: target.runtimeParams
   });
   const listResult = normalizeHistoryListResult(
     await client.listCommits({
@@ -677,7 +717,8 @@ async function getLayerHistoryCommitDiff(options = {}) {
 
   const commitHash = normalizeCommitHash(options.commitHash);
   const client = await createLocalGitHistoryClient({
-    repoRoot: target.repoRoot
+    repoRoot: target.repoRoot,
+    runtimeParams: target.runtimeParams
   });
 
   return {
@@ -707,7 +748,8 @@ async function getLayerHistoryOperationPreview(options = {}) {
   });
 
   const client = await createLocalGitHistoryClient({
-    repoRoot: target.repoRoot
+    repoRoot: target.repoRoot,
+    runtimeParams: target.runtimeParams
   });
 
   return {
@@ -741,7 +783,8 @@ async function rollbackLayerHistory(options = {}) {
 
   const result = await withGitHistorySuppressed(async () => {
     const client = await createLocalGitHistoryClient({
-      repoRoot: target.repoRoot
+      repoRoot: target.repoRoot,
+      runtimeParams: target.runtimeParams
     });
 
     try {
@@ -794,7 +837,8 @@ async function revertLayerHistoryCommit(options = {}) {
 
   const result = await withGitHistorySuppressed(async () => {
     const client = await createLocalGitHistoryClient({
-      repoRoot: target.repoRoot
+      repoRoot: target.repoRoot,
+      runtimeParams: target.runtimeParams
     });
 
     try {

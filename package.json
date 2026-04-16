@@ -81,6 +81,8 @@
       ]
     },
     "nsis": {
+      "guid": "13ef3698-bac3-5a21-9715-28c760e1102e",
+      "include": "packaging/platforms/windows/installer.nsh",
       "createDesktopShortcut": "always"
     }
   },

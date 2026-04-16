@@ -99,6 +99,7 @@ function sleep(ms) {
   });
 }
 
+
 function readGitExecutablePath() {
   const result = spawnSync("bash", ["-lc", "command -v git"], {
     encoding: "utf8",
@@ -160,6 +161,12 @@ const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "space-customware-git-
 const runtimeParams = createRuntimeParams({
   CUSTOMWARE_GIT_HISTORY: true,
   CUSTOMWARE_PATH: "",
+  SINGLE_USER_APP: false
+});
+const isomorphicRuntimeParams = createRuntimeParams({
+  CUSTOMWARE_GIT_HISTORY: true,
+  CUSTOMWARE_PATH: "",
+  GIT_BACKEND: "isomorphic",
   SINGLE_USER_APP: false
 });
 
@@ -447,6 +454,233 @@ try {
   assert.equal(
     fs.readFileSync(path.join(projectRoot, "app", "L2", "alice", "notes.txt"), "utf8"),
     "two\n"
+  );
+
+  writeAppFile({
+    content: "alpha\n",
+    path: "L2/isomorphic/notes.txt",
+    projectRoot,
+    runtimeParams: isomorphicRuntimeParams,
+    username: "isomorphic"
+  });
+  await flushGitHistoryCommits({ throwOnError: true });
+
+  writeAppFile({
+    content: "beta\n",
+    path: "L2/isomorphic/notes.txt",
+    projectRoot,
+    runtimeParams: isomorphicRuntimeParams,
+    username: "isomorphic"
+  });
+  await flushGitHistoryCommits({ throwOnError: true });
+
+  let isomorphicHistory = await listLayerHistoryCommits({
+    limit: 10,
+    path: "L2/isomorphic",
+    projectRoot,
+    runtimeParams: isomorphicRuntimeParams,
+    username: "isomorphic"
+  });
+
+  assert.equal(isomorphicHistory.backend, "isomorphic");
+  assert.equal(isomorphicHistory.commits.length, 2);
+  const isomorphicPreviousCommitHash = isomorphicHistory.commits[1].hash;
+  const isomorphicLatestCommitHash = isomorphicHistory.commits[0].hash;
+
+  const isomorphicFirstPage = await listLayerHistoryCommits({
+    limit: 1,
+    path: "L2/isomorphic",
+    projectRoot,
+    runtimeParams: isomorphicRuntimeParams,
+    username: "isomorphic"
+  });
+
+  assert.equal(isomorphicFirstPage.backend, "isomorphic");
+  assert.equal(isomorphicFirstPage.commits.length, 1);
+  assert.equal(isomorphicFirstPage.commits[0].hash, isomorphicLatestCommitHash);
+  assert.equal(isomorphicFirstPage.hasMore, true);
+  assert.equal(isomorphicFirstPage.total, 2);
+
+  const isomorphicFilteredFirstPage = await listLayerHistoryCommits({
+    fileFilter: "notes",
+    limit: 1,
+    path: "L2/isomorphic",
+    projectRoot,
+    runtimeParams: isomorphicRuntimeParams,
+    username: "isomorphic"
+  });
+
+  assert.equal(isomorphicFilteredFirstPage.backend, "isomorphic");
+  assert.equal(isomorphicFilteredFirstPage.commits.length, 1);
+  assert.equal(isomorphicFilteredFirstPage.hasMore, true);
+  assert.equal(isomorphicFilteredFirstPage.total, null);
+
+  const isomorphicDiff = await getLayerHistoryCommitDiff({
+    commitHash: isomorphicLatestCommitHash,
+    filePath: "notes.txt",
+    path: "L2/isomorphic",
+    projectRoot,
+    runtimeParams: isomorphicRuntimeParams,
+    username: "isomorphic"
+  });
+
+  assert.equal(isomorphicDiff.file.path, "notes.txt");
+  assert.match(isomorphicDiff.patch, /\+beta/u);
+
+  const isomorphicTravelPreview = await getLayerHistoryOperationPreview({
+    commitHash: isomorphicPreviousCommitHash,
+    filePath: "notes.txt",
+    operation: "travel",
+    path: "L2/isomorphic",
+    projectRoot,
+    runtimeParams: isomorphicRuntimeParams,
+    username: "isomorphic"
+  });
+
+  assert.match(isomorphicTravelPreview.patch, /-beta/u);
+  assert.match(isomorphicTravelPreview.patch, /\+alpha/u);
+
+  const isomorphicRevertPreview = await getLayerHistoryOperationPreview({
+    commitHash: isomorphicLatestCommitHash,
+    filePath: "notes.txt",
+    operation: "revert",
+    path: "L2/isomorphic",
+    projectRoot,
+    runtimeParams: isomorphicRuntimeParams,
+    username: "isomorphic"
+  });
+
+  assert.match(isomorphicRevertPreview.patch, /-beta/u);
+  assert.match(isomorphicRevertPreview.patch, /\+alpha/u);
+
+  await rollbackLayerHistory({
+    commitHash: isomorphicPreviousCommitHash,
+    path: "L2/isomorphic",
+    projectRoot,
+    runtimeParams: isomorphicRuntimeParams,
+    username: "isomorphic"
+  });
+
+  assert.equal(
+    fs.readFileSync(path.join(projectRoot, "app", "L2", "isomorphic", "notes.txt"), "utf8"),
+    "alpha\n"
+  );
+
+  isomorphicHistory = await listLayerHistoryCommits({
+    limit: 10,
+    path: "L2/isomorphic",
+    projectRoot,
+    runtimeParams: isomorphicRuntimeParams,
+    username: "isomorphic"
+  });
+
+  assert.equal(isomorphicHistory.currentHash, isomorphicPreviousCommitHash);
+  assert.ok(isomorphicHistory.commits.some((commit) => commit.hash === isomorphicLatestCommitHash));
+
+  writeAppFile({
+    content: "gamma\n",
+    path: "L2/isomorphic/notes.txt",
+    projectRoot,
+    runtimeParams: isomorphicRuntimeParams,
+    username: "isomorphic"
+  });
+  await flushGitHistoryCommits({ throwOnError: true });
+
+  isomorphicHistory = await listLayerHistoryCommits({
+    limit: 10,
+    path: "L2/isomorphic",
+    projectRoot,
+    runtimeParams: isomorphicRuntimeParams,
+    username: "isomorphic"
+  });
+  const isomorphicRevertTargetHash = isomorphicHistory.currentHash;
+
+  await assert.rejects(
+    revertLayerHistoryCommit({
+      commitHash: isomorphicLatestCommitHash,
+      path: "L2/isomorphic",
+      projectRoot,
+      runtimeParams: isomorphicRuntimeParams,
+      username: "isomorphic"
+    }),
+    (error) => {
+      assert.equal(error?.statusCode, 409);
+      assert.match(String(error?.message || ""), /cannot apply cleanly/u);
+      return true;
+    }
+  );
+
+  await revertLayerHistoryCommit({
+    commitHash: isomorphicRevertTargetHash,
+    path: "L2/isomorphic",
+    projectRoot,
+    runtimeParams: isomorphicRuntimeParams,
+    username: "isomorphic"
+  });
+
+  assert.equal(
+    fs.readFileSync(path.join(projectRoot, "app", "L2", "isomorphic", "notes.txt"), "utf8"),
+    "alpha\n"
+  );
+
+  isomorphicHistory = await listLayerHistoryCommits({
+    limit: 10,
+    path: "L2/isomorphic",
+    projectRoot,
+    runtimeParams: isomorphicRuntimeParams,
+    username: "isomorphic"
+  });
+
+  assert.notEqual(isomorphicHistory.currentHash, isomorphicRevertTargetHash);
+  assert.ok(isomorphicHistory.commits.some((commit) => commit.hash === isomorphicRevertTargetHash));
+
+  writeAppFile({
+    content: "base\nstable\n",
+    path: "L2/isomorphic/merge.txt",
+    projectRoot,
+    runtimeParams: isomorphicRuntimeParams,
+    username: "isomorphic"
+  });
+  await flushGitHistoryCommits({ throwOnError: true });
+
+  writeAppFile({
+    content: "updated\nstable\n",
+    path: "L2/isomorphic/merge.txt",
+    projectRoot,
+    runtimeParams: isomorphicRuntimeParams,
+    username: "isomorphic"
+  });
+  await flushGitHistoryCommits({ throwOnError: true });
+
+  isomorphicHistory = await listLayerHistoryCommits({
+    limit: 10,
+    path: "L2/isomorphic",
+    projectRoot,
+    runtimeParams: isomorphicRuntimeParams,
+    username: "isomorphic"
+  });
+  const isomorphicMergeTargetHash = isomorphicHistory.currentHash;
+
+  writeAppFile({
+    content: "updated\nstable\nlater\n",
+    path: "L2/isomorphic/merge.txt",
+    projectRoot,
+    runtimeParams: isomorphicRuntimeParams,
+    username: "isomorphic"
+  });
+  await flushGitHistoryCommits({ throwOnError: true });
+
+  await revertLayerHistoryCommit({
+    commitHash: isomorphicMergeTargetHash,
+    path: "L2/isomorphic",
+    projectRoot,
+    runtimeParams: isomorphicRuntimeParams,
+    username: "isomorphic"
+  });
+
+  assert.equal(
+    fs.readFileSync(path.join(projectRoot, "app", "L2", "isomorphic", "merge.txt"), "utf8"),
+    "base\nstable\nlater\n"
   );
 
   writeAppFile({

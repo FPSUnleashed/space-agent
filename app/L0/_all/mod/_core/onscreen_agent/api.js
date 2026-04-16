@@ -281,11 +281,7 @@ export class OnscreenAgentLlmClient {
     const promptOptions =
       options.promptOptions && typeof options.promptOptions === "object"
         ? options.promptOptions
-        : {
-            localProfile:
-              config.normalizeOnscreenAgentLlmProvider(this.settings.provider) ===
-              config.ONSCREEN_AGENT_LLM_PROVIDER.LOCAL
-          };
+        : {};
 
     return prepareOnscreenAgentCompletionRequest({
       messages: options.messages,

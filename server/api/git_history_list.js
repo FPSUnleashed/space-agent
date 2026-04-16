@@ -1,6 +1,12 @@
 import { createHttpError } from "../lib/customware/file_access.js";
 import { listLayerHistoryCommits } from "../lib/customware/git_history.js";
 
+function rethrowGitHistoryHttpError(error, fallbackMessage) {
+  const httpError = createHttpError(error.message || fallbackMessage, Number(error.statusCode) || 500);
+  httpError.cause = error;
+  throw httpError;
+}
+
 function readPayload(context) {
   return context.body && typeof context.body === "object" && !Buffer.isBuffer(context.body)
     ? context.body
@@ -27,9 +33,9 @@ function readFileFilter(context) {
   return String(payload.fileFilter || payload.filter || context.params.fileFilter || context.params.filter || "");
 }
 
-function handleList(context) {
+async function handleList(context) {
   try {
-    return listLayerHistoryCommits({
+    return await listLayerHistoryCommits({
       fileFilter: readFileFilter(context),
       limit: readLimit(context),
       offset: readOffset(context),
@@ -40,14 +46,14 @@ function handleList(context) {
       watchdog: context.watchdog
     });
   } catch (error) {
-    throw createHttpError(error.message || "Git history list failed.", Number(error.statusCode) || 500);
+    rethrowGitHistoryHttpError(error, "Git history list failed.");
   }
 }
 
-export function get(context) {
+export async function get(context) {
   return handleList(context);
 }
 
-export function post(context) {
+export async function post(context) {
   return handleList(context);
 }

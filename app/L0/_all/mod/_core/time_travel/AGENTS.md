@@ -32,7 +32,7 @@ This module owns:
 - the folder button opens a repository-picker dialog with the subtitle `Select Time Travel scope (git repository folder)` and calls `space.api.call("file_paths", { method: "POST", body: { patterns: ["**/.git/"], gitRepositories: true, access: "write" } })`
 - repository discovery must list writable local-history owner roots such as `L1/<group>/` and `L2/<user>/` without exposing `.git` metadata paths to the browser
 - selecting a repository switches `historyPath` to that app-relative owner root and reloads the first history page; `~` remains the default on fresh page load
-- the commit sidebar requests one page of 100 commits at a time and should not load diff bodies during list rendering
+- the commit sidebar requests one page of 100 commits at a time, should not load diff bodies during list rendering, and must tolerate `total: null` on filtered pages by relying on `hasMore` for pagination
 - successful history status text should append the server-reported Git implementation as `(git: <backend>)`, using the `backend` value returned by `git_history_list`
 - the file filter is open-ended and filters which commits are listed; matching commits still receive full changed-file metadata so sidebar pills and right-side details are not limited to the matching file
 - list rows should emphasize human-readable relative time, place a `CURRENT` pill between relative and full time when the commit is current, and summarize changed filenames in compact outline-only action-colored pills capped to three full rows
@@ -45,6 +45,7 @@ This module owns:
 - travel and revert buttons open a preview dialog through `space.api.gitHistoryPreview(...)`; the dialog lists affected files and lets users open operation-specific file diffs before confirming
 - travel calls `space.api.gitHistoryRollback({ path: historyPath, commitHash })` after preview confirmation
 - revert calls `space.api.gitHistoryRevert({ path: historyPath, commitHash })` and creates a new history point with inverse changes rather than moving the current point
+- revert conflicts in the action dialog should show a short readable summary and next-step hint by default, and keep the raw backend error available only inside an expandable technical-details block
 - the backend returns `currentHash`; that commit is treated as the current point in time and should not present a rollback action
 - travel must ask for explicit user confirmation in the preview modal because it hard-resets the selected writable owner root on the server
 - rollback preserves the previous head in backend-owned history refs so commits after the travelled-to point remain visible for forward travel

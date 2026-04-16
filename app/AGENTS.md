@@ -24,6 +24,7 @@ Documentation is top priority for this area. After any change under `app/` or an
 Current module-local docs in the app tree:
 
 - `app/L0/_all/mod/_core/agent/AGENTS.md`
+- `app/L0/_all/mod/_core/agent_prompt/AGENTS.md`
 - `app/L0/_all/mod/_core/user/AGENTS.md`
 - `app/L0/_all/mod/_core/user_crypto/AGENTS.md`
 - `app/L0/_all/mod/_core/dashboard/AGENTS.md`
@@ -119,6 +120,7 @@ Current major first-party modules under `app/L0/_all/mod/_core/`:
 - `router/`: root routed shell for the authenticated app; route-level frame width, height or scroll policy, the shared shell-owned top-clearance budget, and other shell-owned layout overrides belong here rather than in feature modules, while routed pages own their own vertical spacing, any route-specific bottom breathing room, and local card padding but should avoid shell-compensation horizontal gutters at the route root
 - `admin/`: firmware-backed admin shell and panels, including a mirrored `[id="_core/onscreen_menu/bar_start"]` inject host above admin tab content so embedded routed surfaces can reuse their existing injected controls inside `/admin`
 - `agent/`: routed first-party agent information and user-local personality include editor, kept self-contained inside the module and advertised to the dashboard through `ext/panels/agent.yaml`
+- `agent_prompt/`: headless shared prepared-prompt runtime reused by first-party agent surfaces
 - `user/`: routed first-party account settings page that edits `~/user.yaml` directly for `full_name`, keeps password rotation server-owned through `password_change`, and advertises itself through `ext/panels/user.yaml`
 - `user_crypto/`: headless per-user encryption helper that restores session-scoped unlock state from login bootstrap and exposes `space.utils.userCrypto` for small encrypted user secrets, while short-circuiting to plaintext pass-through in `SINGLE_USER_APP=true`
 - `file_explorer/`: reusable app-file browser component, routed Files page, dashboard panel manifest, and routed header-menu item
@@ -202,7 +204,7 @@ HTML extension anchors:
 - `_core/framework` also creates `_core/framework/head/end` in `document.head` during bootstrap so layers can add declarative head-side tags or inline bootstraps without editing page shells or adding a JS hook
 - runtime discovery watches the whole document tree, so `x-extension` and `x-component` insertions under `head` are supported the same way as body-mounted seams
 - `_core/onscreen_menu` owns a reserved centered header bar from `_core/router/shell_start`; it keeps `_core/onscreen_menu/bar_start` on the left and `_core/onscreen_menu/bar_end` on the right for shell-level controls, allows route-owned `x-inject` content to target the existing left-side `[id="_core/onscreen_menu/bar_start"]` container when a feature wants ephemeral controls that disappear with the route but the shell seam may mount later, keeps a persistent Home button that routes to the empty route `#/` so the router default decides the home screen, and exposes `_core/onscreen_menu/items` as the dropdown action seam for non-Home feature buttons, whose modules contribute thin button adapters with numeric `data-order` values while `_core/onscreen_menu` sorts them automatically and keeps only the auth exit action local after the seam; `_core/dashboard` is the current first-party example of a route-owned wrapper that injects into `bar_start` and then exposes ordered dashboard-local seams for dashboard-only topbar actions
-- `_core/web_browsing` is the current first-party example of a module that uses both `_core/onscreen_menu/items` and `page/router/overlay/end`: it contributes a Browser menu action at `data-order="250"`, mounts a draggable, minimizable, resizable floating iframe window, and keeps its iframe-side browsing bridge self-contained through a `data-space-inject` path plus a matching module-local outside helper; packaged desktop runs may activate that path through the Electron frame-preload hook while normal browser sessions still leave it inactive
+- `_core/web_browsing` is the current first-party example of a module that uses both `_core/onscreen_menu/items` and `page/router/overlay/end`: it contributes a Browser menu action at `data-order="250"`, mounts a draggable, minimizable, resizable floating iframe window, and keeps its iframe-side browsing bridge self-contained through a `data-space-inject` path plus a matching module-local outside helper; packaged desktop runs may use the Electron frame-preload hook both for subframe-only document-start shadow-root opening and for the later validated `data-space-inject` runtime path, while normal browser sessions still leave that path inactive
 
 JS extension hooks:
 

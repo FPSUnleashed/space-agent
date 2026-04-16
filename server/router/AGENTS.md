@@ -96,6 +96,7 @@ Responses:
 
 - `responses.js` owns JSON serialization, redirects, file responses, stream responses, and Web `Response` bridging
 - `cors.js` owns the API CORS policy and `OPTIONS` handling
+- `router.js` must log every caught API handler failure once, including non-5xx responses, and should prefer an attached `error.cause` when endpoint wrappers preserve the underlying backend exception; 5xx bodies are still redacted to `Internal server error` for the browser
 
 ## Development Guidance
 

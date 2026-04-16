@@ -81,6 +81,10 @@ function isMissingFileError(error) {
   return /\bstatus 404\b/u.test(message) || /File not found\./u.test(message);
 }
 
+function isSingleUserAppRuntime(runtime) {
+  return Boolean(runtime?.config?.get?.("SINGLE_USER_APP", false));
+}
+
 async function decodeStoredApiKey(runtime, storedValue) {
   const rawStoredValue = String(storedValue || "").trim();
 
@@ -88,6 +92,14 @@ async function decodeStoredApiKey(runtime, storedValue) {
     return {
       locked: false,
       storedValue: "",
+      value: ""
+    };
+  }
+
+  if (isSingleUserAppRuntime(runtime) && rawStoredValue.startsWith("userCrypto:")) {
+    return {
+      locked: true,
+      storedValue: rawStoredValue,
       value: ""
     };
   }

@@ -895,7 +895,9 @@ export async function createNativeGitHistoryClient({ repoRoot }) {
 
         if (result.status !== 0) {
           await runGitAsync(resolvedRepoRoot, ["revert", "--abort"], { check: false });
-          throw createGitError(["revert", hash], result.stderr, result.stdout);
+          const error = createGitError(["revert", hash], result.stderr, result.stdout);
+          error.statusCode = 409;
+          throw error;
         }
 
         const nextHash = await readGitAsync(resolvedRepoRoot, ["rev-parse", "HEAD"]);

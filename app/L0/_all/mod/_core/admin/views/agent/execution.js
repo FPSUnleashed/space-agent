@@ -1,3 +1,9 @@
+import {
+  appendExecutionTextBlock,
+  formatExecutionLogArgs,
+  formatExecutionTranscriptValue
+} from "/mod/_core/framework/js/execution-format.js";
+
 export const EXECUTION_SEPARATOR = "_____javascript";
 
 const EXECUTION_CONTEXT_KEY = "__spaceAdminAgentExecutionContext";
@@ -364,15 +370,20 @@ function createConsoleRecorder(methodName, originalMethod, logs, targetWindow) {
     }
 
     const logArgs = methodName === "assert" ? args.slice(1) : args;
-    const text = logArgs.length
-      ? logArgs
-          .map((value) =>
-            formatExecutionValue(value, {
-              targetWindow
-            })
-          )
-          .join(" ")
-      : "(no output)";
+    const text = formatExecutionLogArgs(logArgs, {
+      formatFallback: (value, formatterOptions = {}) =>
+        formatExecutionValue(value, {
+          targetWindow: formatterOptions.targetWindow || targetWindow
+        }),
+      normalizeSpecialValue: (value) => {
+        if (isLoadedAdminSkill(value)) {
+          return `[Loaded skill ${value.skillName || value.path}]`;
+        }
+
+        return undefined;
+      },
+      targetWindow
+    });
 
     logs.push({
       level: methodName,
@@ -546,6 +557,24 @@ function flattenExecutionMessageValue(value) {
     .join("\\n");
 }
 
+function formatExecutionResultValue(value, options) {
+  const { targetWindow } = options;
+  return formatExecutionTranscriptValue(value, {
+    formatFallback: (fallbackValue, formatterOptions = {}) =>
+      formatExecutionValue(fallbackValue, {
+        targetWindow: formatterOptions.targetWindow || targetWindow
+      }),
+    normalizeSpecialValue: (specialValue) => {
+      if (isLoadedAdminSkill(specialValue)) {
+        return `[Loaded skill ${specialValue.skillName || specialValue.path}]`;
+      }
+
+      return undefined;
+    },
+    targetWindow
+  });
+}
+
 function formatExecutionResultLines(result) {
   const status = typeof result?.status === "string" && result.status.trim() ? result.status.trim() : "done";
   const lines = [`execution ${status}`];
@@ -553,14 +582,14 @@ function formatExecutionResultLines(result) {
 
   prints.forEach((entry) => {
     const level = typeof entry?.level === "string" && entry.level.trim() ? entry.level.trim() : "log";
-    lines.push(`${level}: ${flattenExecutionMessageValue(entry?.text ?? "")}`);
+    appendExecutionTextBlock(lines, level, entry?.text ?? "");
   });
 
   if (isLoadedAdminSkill(result?.result)) {
     const loadedSkillResultText = formatLoadedSkillResultText(result.result);
 
     if (loadedSkillResultText) {
-      lines.push(`result: ${loadedSkillResultText}`);
+      appendExecutionTextBlock(lines, "result", loadedSkillResultText);
     }
 
     if (!result.result.loadResponseText) {
@@ -573,11 +602,11 @@ function formatExecutionResultLines(result) {
   }
 
   if (result?.result !== undefined) {
-    lines.push(`result: ${flattenExecutionMessageValue(result.resultText)}`);
+    appendExecutionTextBlock(lines, "result", result.resultText);
   }
 
   if (!result?.error?.text && result?.result === undefined && !prints.length) {
-    lines.push("no result no console logs");
+    lines.push("execution returned no result and no console logs were printed");
   }
 
   if (result?.error?.text) {
@@ -667,7 +696,7 @@ export function createExecutionContext(options = {}) {
         resultText:
           error || result === undefined
             ? ""
-            : formatExecutionValue(result, {
+            : formatExecutionResultValue(result, {
                 targetWindow
               }),
         runId,

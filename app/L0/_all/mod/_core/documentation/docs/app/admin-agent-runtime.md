@@ -4,11 +4,15 @@ This doc covers the firmware-backed admin agent surface under `_core/admin/views
 
 Primary sources:
 
+- `app/L0/_all/mod/_core/agent_prompt/AGENTS.md`
+- `app/L0/_all/mod/_core/agent_prompt/prompt-runtime.js`
 - `app/L0/_all/mod/_core/admin/AGENTS.md`
 - `app/L0/_all/mod/_core/admin/views/agent/AGENTS.md`
 - `app/L0/_all/mod/_core/admin/views/agent/skills.js`
 - `app/L0/_all/mod/_core/admin/views/agent/store.js`
 - `app/L0/_all/mod/_core/admin/views/agent/api.js`
+- `app/L0/_all/mod/_core/admin/views/agent/prompt.js`
+- `app/L0/_all/mod/_core/onscreen_agent/llm.js`
 - `app/L0/_all/mod/_core/open_router/AGENTS.md`
 - `app/L0/_all/mod/_core/admin/views/agent/huggingface.js`
 - `app/L0/_all/mod/_core/admin/views/agent/panel.html`
@@ -20,16 +24,19 @@ The admin agent is a standalone admin-only chat surface mounted inside `/admin`.
 It owns:
 
 - its own settings and history persistence under `~/conf/admin-chat.yaml` and `~/hist/admin-chat.json`
-- its own prompt assembly, history compaction, execution loop, and attachment runtime
+- its own history compaction, execution loop, provider settings, and attachment runtime
 - its own LLM transport switch between remote API streaming and the browser-local Hugging Face provider
 
-The stored admin config keeps `api_key` encrypted at rest when `space.utils.userCrypto` is unlocked for the current browser session. Encrypted values are stored as `userCrypto:`-prefixed strings in `~/conf/admin-chat.yaml`, decrypted automatically on load, and fail soft to a blank locked field when the current session cannot decrypt them. In `SINGLE_USER_APP=true`, `space.utils.userCrypto` bypasses encryption entirely, so `api_key` stays plaintext and no `userCrypto:` wrapper is added.
+It now reuses the same standard prepared prompt builder as the onscreen agent, through shared `_core/agent_prompt/prompt-runtime.js` plus the standard builder callbacks in `_core/onscreen_agent/llm.js`. The only admin-specific prompt-shaping difference is that admin appends custom user instructions at the end of the assembled standard system prompt.
+That shared prompt runtime caches only plain structured prompt-input data. Runtime-only objects such as prompt instances must be stripped before caching so prompt-history previews, retry preparation, and other clone-heavy paths stay safe.
 
-It does not depend on `_core/onscreen_agent` internals.
+The stored admin config keeps `api_key` encrypted at rest when `space.utils.userCrypto` is unlocked for the current browser session. Encrypted values are stored as `userCrypto:`-prefixed strings in `~/conf/admin-chat.yaml`, decrypted automatically on load, and fail soft to a blank locked field when the current session cannot decrypt them. In `SINGLE_USER_APP=true`, `space.utils.userCrypto` bypasses encryption entirely, so new `api_key` values stay plaintext and no `userCrypto:` wrapper is added, but any legacy wrapped value from an older non-single-user build still loads as a blank locked field until the user replaces or clears it.
 
 The shared thread view keeps settled admin assistant replies markdown-rendered, but submitted user bubbles stay plain pre-wrapped text so typed blank lines display literally instead of expanding into markdown paragraph gaps.
 That shared history styling resets rendered markdown bubbles back to normal white-space so parser formatting newlines between tags do not show up as visible blank lines, and it also collapses direct block margins inside list items so loose markdown bullets do not render blank-line-sized gaps between entries.
 The admin agent's empty-state astronaut, thread avatar helmet, and admin-shell launcher avatar now all resolve through the shared authenticated-app artwork folder at `/mod/_core/visual/res/chat/admin/`. Repo-owned app image assets should stay under `_core/visual/res/`, not under `_core/admin/`.
+Caught admin runtime failures are logged through `console.error` in addition to any status-line copy shown in the surface, so debugging no longer depends on the composer or placeholder text alone.
+Admin execution transcripts now match the overlay contract for both console logs and returned values: structured payloads use the same YAML-first serializer, console output is emitted through block headers such as `log↓` or `warn↓`, and returned values use `result↓`, with JSON only as the fallback when the lightweight YAML helper cannot serialize the shape.
 
 ## Skill Discovery
 
@@ -43,9 +50,7 @@ The admin agent now uses the same shared browser-side skill helper as the onscre
 - `metadata.loaded` works here too, so the admin prompt can append the matching auto-loaded skill context without hardcoding specific skill ids; those auto-loaded skills may resolve only to `system` or `transient`, with `system` as the fallback
 - the first-party `memory` skill is one of those auto-loaded system skills and teaches prompt-include-backed user memory under `~/memory/`
 - `space.admin.loadSkill("path")` loads a matching `ext/skills/.../SKILL.md` file on demand
-- admin skill discovery is still firmware-clamped because `views/agent/skills.js` resolves those skill paths with explicit `maxLayer=0`
-
-That means admin execution can still use normal app-file APIs across L0, L1, and L2 for operational work, while the prompt-facing skill catalog and skill bodies remain uninfluenced by writable customware layers.
+- `space.skills.load("path")` is mirrored to that same loader so the shared standard prompt contract can keep the same load hint text on both surfaces
 
 Manual loads follow the same placement rule as the onscreen agent: `history` placement enters normal execution-output history, while `system` and `transient` placement register the skill in runtime prompt context and report the short load result text instead of pasting the full body into history.
 
@@ -95,7 +100,7 @@ Instead:
 - also shows shortcut entries from the shared browser-side saved-model list exposed by `_core/huggingface/manager.js`
 - reads the same live load state, current model, and progress data as the routed `/#/huggingface` surface instead of booting a second in-page Hugging Face worker
 - admin load or unload or send actions should call `_core/huggingface/manager.js` directly, so the model-selector actions and admin chat transport use the exact same shared manager path as the routed testing page
-- local admin sends use a compact execution prompt profile instead of the full firmware prompt plus admin-skills catalog, which keeps the shared browser-local LLM path closer to the lightweight routed testing chat and avoids inflating the prompt budget unnecessarily
+- local admin sends use the same full prepared prompt that API mode uses, so provider switches do not fork examples, skills, prompt includes, history shaping, or transient context
 - opening the admin settings dialog should not auto-boot the Hugging Face runtime or auto-load the saved Hugging Face model; admin may refresh saved-model shortcuts, but the actual model load stays lazy until explicit load or first send
 - the last-used saved-model preselection is browser-wide local storage rather than admin config, and it only fills a blank local-provider draft
 - keeps a separate selected-model line in the modal so the configured repo and dtype remain visible even while no model is currently loaded
@@ -106,7 +111,7 @@ Instead:
 - saving the config no longer requires the model to already exist in that saved-model list; admin now kicks off background load for the configured local model on save and on page init when local mode is already active, while the first admin send still acts as the fallback load trigger if preparation has not finished yet
 - links out to `/#/huggingface` for fuller testing-chat work, not as the only load path
 
-This means the admin agent reuses the same shared visual assets, browser-local worker state, and component contracts as the dedicated Local LLM testing route, while still keeping admin prompt assembly, history, and provider-selection persistence local to `_core/admin/views/agent/`.
+This means the admin agent reuses the same shared visual assets, browser-local worker state, component contracts, and standard prepared prompt builder used by the onscreen agent, while still keeping admin persistence, transport, and shell behavior local to `_core/admin/views/agent/`.
 
 ## Practical Behavior
 

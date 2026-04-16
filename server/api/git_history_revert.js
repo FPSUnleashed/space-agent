@@ -2,6 +2,12 @@ import { createHttpError } from "../lib/customware/file_access.js";
 import { revertLayerHistoryCommit } from "../lib/customware/git_history.js";
 import { runTrackedMutation } from "../runtime/request_mutations.js";
 
+function rethrowGitHistoryHttpError(error, fallbackMessage) {
+  const httpError = createHttpError(error.message || fallbackMessage, Number(error.statusCode) || 500);
+  httpError.cause = error;
+  throw httpError;
+}
+
 function readPayload(context) {
   return context.body && typeof context.body === "object" && !Buffer.isBuffer(context.body)
     ? context.body
@@ -40,6 +46,6 @@ export async function post(context) {
       })
     );
   } catch (error) {
-    throw createHttpError(error.message || "Git history revert failed.", Number(error.statusCode) || 500);
+    rethrowGitHistoryHttpError(error, "Git history revert failed.");
   }
 }

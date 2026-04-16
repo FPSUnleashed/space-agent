@@ -42,6 +42,12 @@ CUSTOMWARE_GIT_HISTORY:
   allowed: [true, false]
   default: true
   frontend_exposed: false
+GIT_BACKEND:
+  description: Git backend used by server-owned Git flows such as local history and module installs. Set to auto for normal fallback selection.
+  type: text
+  allowed: [auto, native, nodegit, isomorphic]
+  default: auto
+  frontend_exposed: false
 GIT_URL:
   description: Optional git repository URL used by update flows such as node space update and node space supervise when checking and cloning releases.
   type: text

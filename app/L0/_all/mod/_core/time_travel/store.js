@@ -100,6 +100,44 @@ function normalizeRepositoryEntry(value = "") {
   };
 }
 
+function parseApiErrorStatus(error) {
+  const match = String(error?.message || "").match(/\bstatus\s+(\d+)\b/u);
+  return match ? Number.parseInt(match[1], 10) : 0;
+}
+
+function extractRevertConflictPath(detail = "") {
+  const match = String(detail || "").match(/cannot apply cleanly for\s+(.+?)\s+with the /iu);
+  return match?.[1] ? String(match[1]).trim() : "";
+}
+
+function describeTimeTravelActionError(error, { action = "", phase = "execute" } = {}) {
+  const details = String(error?.message || "").trim();
+  const statusCode = parseApiErrorStatus(error);
+  const fallbackSummary = phase === "preview"
+    ? "Unable to preview affected files."
+    : action === "revert"
+      ? "Unable to revert changes."
+      : "Unable to travel in time.";
+
+  if (action === "revert" && phase !== "preview" && statusCode === 409) {
+    const filePath = extractRevertConflictPath(details);
+
+    return {
+      details,
+      hint: "Use Time Travel to move back directly, or revert a newer point first.",
+      summary: filePath
+        ? "Cannot revert because " + filePath + " has newer changes."
+        : "Cannot revert because newer changes now affect the same file."
+    };
+  }
+
+  return {
+    details: details && details !== fallbackSummary ? details : "",
+    hint: "",
+    summary: fallbackSummary
+  };
+}
+
 function normalizeCommitFile(file = {}) {
   if (typeof file === "string") {
     return {
@@ -221,6 +259,8 @@ function fitsInPreviewRows(itemWidths, containerWidth, gap) {
 
 const model = {
   actionPreviewCommit: null,
+  actionPreviewErrorDetails: "",
+  actionPreviewErrorHint: "",
   actionPreviewErrorText: "",
   actionPreviewFiles: [],
   actionPreviewLoading: false,
@@ -734,6 +774,19 @@ const model = {
     this.previewLayouts = nextLayouts;
   },
 
+  clearActionPreviewError() {
+    this.actionPreviewErrorDetails = "";
+    this.actionPreviewErrorHint = "";
+    this.actionPreviewErrorText = "";
+  },
+
+  setActionPreviewError(error, options = {}) {
+    const nextError = describeTimeTravelActionError(error, options);
+    this.actionPreviewErrorDetails = nextError.details;
+    this.actionPreviewErrorHint = nextError.hint;
+    this.actionPreviewErrorText = nextError.summary;
+  },
+
   async openActionDialog(action) {
     const pendingAction = action === "revert" ? "revert" : "travel";
     const commit = this.selectedCommit;
@@ -745,7 +798,7 @@ const model = {
     this.pendingAction = pendingAction;
     this.actionPreviewCommit = commit;
     this.actionPreviewFiles = [];
-    this.actionPreviewErrorText = "";
+    this.clearActionPreviewError();
     this.actionPreviewLoading = true;
     this.refs?.actionDialog?.showModal?.();
     const previewAction = pendingAction;
@@ -767,7 +820,10 @@ const model = {
     } catch (error) {
       logTimeTravelError("openActionDialog failed", error);
       if (this.pendingAction === previewAction && this.actionPreviewCommit?.hash === previewHash) {
-        this.actionPreviewErrorText = String(error?.message || "Unable to preview affected files.");
+        this.setActionPreviewError(error, {
+          action: previewAction,
+          phase: "preview"
+        });
       }
     } finally {
       if (this.pendingAction === previewAction && this.actionPreviewCommit?.hash === previewHash) {
@@ -786,7 +842,7 @@ const model = {
     }
 
     this.actionPreviewCommit = null;
-    this.actionPreviewErrorText = "";
+    this.clearActionPreviewError();
     this.actionPreviewFiles = [];
     this.actionPreviewLoading = false;
     this.pendingAction = "";
@@ -827,7 +883,9 @@ const model = {
       this.setStatus("Travelled in time. Other history points are still available.", "success");
     } catch (error) {
       logTimeTravelError("rollbackSelected failed", error);
-      this.actionPreviewErrorText = String(error?.message || "Unable to travel in time.");
+      this.setActionPreviewError(error, {
+        action: "travel"
+      });
       this.setStatus(this.actionPreviewErrorText, "error");
     } finally {
       this.rollingBack = false;
@@ -861,7 +919,9 @@ const model = {
       this.setStatus("Reverted those changes as a new history point.", "success");
     } catch (error) {
       logTimeTravelError("revertSelected failed", error);
-      this.actionPreviewErrorText = String(error?.message || "Unable to revert changes.");
+      this.setActionPreviewError(error, {
+        action: "revert"
+      });
       this.setStatus(this.actionPreviewErrorText, "error");
     } finally {
       this.reverting = false;

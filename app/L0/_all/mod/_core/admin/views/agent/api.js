@@ -1,6 +1,7 @@
 import * as config from "/mod/_core/admin/views/agent/config.js";
 import { buildMessageContentForApi } from "/mod/_core/admin/views/agent/attachments.js";
 import * as llmParams from "/mod/_core/admin/views/agent/llm-params.js";
+import * as prompt from "/mod/_core/admin/views/agent/prompt.js";
 import { mergeConsecutiveChatMessages } from "/mod/_core/framework/js/chat-messages.js";
 import * as proxyUrl from "/mod/_core/framework/js/proxy-url.js";
 import { getHuggingFaceManager } from "/mod/_core/huggingface/manager.js";
@@ -176,8 +177,17 @@ function normalizeAdminPromptContext(promptContext, fallbackSystemPrompt = "") {
     promptContext && typeof promptContext === "object" && !Array.isArray(promptContext)
       ? promptContext
       : {};
+  const requestMessages = Array.isArray(normalizedContext.requestMessages)
+    ? normalizedContext.requestMessages
+        .filter((message) => message && typeof message === "object")
+        .map((message) => ({
+          content: typeof message.content === "string" ? message.content : "",
+          role: message.role === "assistant" ? "assistant" : message.role === "system" ? "system" : "user"
+        }))
+    : [];
 
   return {
+    requestMessages,
     systemPrompt:
       typeof normalizedContext.systemPrompt === "string"
         ? normalizedContext.systemPrompt.trim()
@@ -202,11 +212,15 @@ export function formatAdminAgentHistoryText(messages) {
 }
 
 export function buildAdminAgentPromptMessages(systemPromptOrContext, messages, options = {}) {
-  const requestMessages = [];
   const promptContext =
     systemPromptOrContext && typeof systemPromptOrContext === "object" && !Array.isArray(systemPromptOrContext)
       ? normalizeAdminPromptContext(systemPromptOrContext)
       : normalizeAdminPromptContext(options.promptContext, systemPromptOrContext);
+  if (promptContext.requestMessages.length) {
+    return promptContext.requestMessages.map((message) => ({ ...message }));
+  }
+
+  const requestMessages = [];
   const effectiveSystemPrompt = promptContext.systemPrompt;
 
   if (effectiveSystemPrompt) {
@@ -394,11 +408,37 @@ async function readStreamingResponse(response, onDelta) {
 
 export const prepareAdminAgentApiRequest = globalThis.space.extend(
   import.meta,
-  async function prepareAdminAgentApiRequest({ promptContext, settings, systemPrompt, messages } = {}) {
+  async function prepareAdminAgentApiRequest({
+    defaultSystemPrompt,
+    messages,
+    promptContext,
+    promptInput,
+    promptInstance,
+    settings,
+    systemPrompt,
+    transientSections
+  } = {}) {
     const effectiveSettings =
       settings && typeof settings === "object" ? settings : config.DEFAULT_ADMIN_CHAT_SETTINGS;
     const apiEndpoint = String(effectiveSettings?.apiEndpoint || "").trim();
-    const normalizedPromptContext = normalizeAdminPromptContext(promptContext, systemPrompt);
+    const effectivePromptContext =
+      promptInput && typeof promptInput === "object"
+        ? promptInput
+        : promptInstance && typeof promptInstance.build === "function"
+          ? await prompt.buildAdminPromptContext(systemPrompt, {
+              defaultSystemPrompt,
+              historyMessages: Array.isArray(messages) ? messages : [],
+              promptInstance,
+              transientSections
+            })
+          : promptContext && typeof promptContext === "object"
+            ? promptContext
+            : await prompt.buildAdminPromptContext(systemPrompt, {
+                defaultSystemPrompt,
+                historyMessages: Array.isArray(messages) ? messages : [],
+                transientSections
+              });
+    const normalizedPromptContext = normalizeAdminPromptContext(effectivePromptContext, systemPrompt);
 
     return {
       apiEndpoint,

@@ -291,9 +291,20 @@
             </template>
 
             <template x-if="!$store.timeTravel.actionPreviewLoading && $store.timeTravel.actionPreviewErrorText">
-              <div class="time-travel-empty">
+              <div class="time-travel-empty time-travel-action-error">
                 <x-icon>error</x-icon>
-                <p x-text="$store.timeTravel.actionPreviewErrorText"></p>
+                <div class="time-travel-action-error-copy">
+                  <p x-text="$store.timeTravel.actionPreviewErrorText"></p>
+                  <template x-if="$store.timeTravel.actionPreviewErrorHint">
+                    <p class="time-travel-action-error-hint" x-text="$store.timeTravel.actionPreviewErrorHint"></p>
+                  </template>
+                  <template x-if="$store.timeTravel.actionPreviewErrorDetails">
+                    <details class="time-travel-action-error-details">
+                      <summary>Show technical details</summary>
+                      <pre x-text="$store.timeTravel.actionPreviewErrorDetails"></pre>
+                    </details>
+                  </template>
+                </div>
               </div>
             </template>
 

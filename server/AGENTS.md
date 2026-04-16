@@ -83,6 +83,7 @@ Parent and child split rules:
 - provide the outbound fetch proxy at `/api/proxy`
 - enforce auth, session, module, and app-file access boundaries
 - optionally maintain adaptive-debounced per-owner local Git history repositories for writable `L1/<group>/` and `L2/<user>/` roots when `CUSTOMWARE_GIT_HISTORY` is enabled
+- resolve server-owned Git operations such as local history and Git-backed module installs through the shared backend abstraction, with `GIT_BACKEND=auto` as the default fallback mode and optional forcing to `native`, `nodegit`, or `isomorphic`
 - optionally enforce `USER_FOLDER_SIZE_LIMIT_BYTES` for each on-disk `L2/<user>/` folder through app-file mutation quota checks that use cached per-user size totals
 - run deterministic primary-owned periodic maintenance jobs from `server/jobs/` for backend-enforced cleanup such as guest-account pruning
 - keep the backend-only auth secrets outside the logical app tree, using shared environment injection via `SPACE_AUTH_PASSWORD_SEAL_KEY` and `SPACE_AUTH_SESSION_HMAC_KEY` plus local gitignored fallback storage under `server/data/` by default or `SPACE_AUTH_DATA_DIR` when that override is set; `userCrypto` also keeps a local backend-share cache there, while the shared `L2/<username>/meta/user_crypto.json` record carries a backend-sealed copy for multi-instance recovery
@@ -166,6 +167,7 @@ The server relies on a small set of shared infrastructure contracts. Do not re-i
 - `server/lib/customware/user_quota.js` is the canonical per-user folder-size quota helper; callers must enforce quota through shared app-file mutation helpers instead of adding endpoint-local size checks
 - file listing and pattern discovery may be filtered to writable paths through the shared file-access helper, and Git repository discovery returns writable owner roots without exposing `.git` metadata
 - `server/lib/customware/git_history.js` is the canonical entry point for optional per-owner writable-layer Git history and rollback, including L2 auth-file ignore and rollback preservation rules
+- `server/lib/git/` owns Git backend selection for source-checkout update flows, Git-backed module installs, and local-history clients; server runtime param `GIT_BACKEND` defaults to `auto` and may force `native`, `nodegit`, or `isomorphic`
 - `server/lib/tmp/` owns the canonical `server/tmp/` janitor and disk-backed archive creation for streamed folder downloads
 - `server/lib/customware/module_inheritance.js` and `server/lib/customware/extension_overrides.js` are the canonical module and extension resolution helpers
 - `server/lib/customware/module_manage.js` is the canonical module list, info, install, and remove helper

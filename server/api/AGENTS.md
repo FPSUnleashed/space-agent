@@ -76,8 +76,8 @@ Current rules:
 - `git_history_diff` returns the patch body for one file in one commit after read permission is verified
 - `git_history_preview` returns affected-file metadata for a travel or revert operation after write permission is verified, and returns an operation-specific patch when `filePath` is provided
 - `git_history_rollback` hard-resets a writable owner-root history repository to a requested commit, preserves ignored L2 auth files, preserves the previous head for forward travel when possible, and publishes the changed owner root through the shared mutation path after the reset
-- `git_history_revert` creates a new commit that undoes a selected commit, preserves ignored L2 auth files, and publishes the changed owner root through the shared mutation path after the revert
-- history endpoints delegate path normalization, permission checks, commit listing, diff reads, rollback, revert, and commit-loop suppression to `server/lib/customware/git_history.js`
+- `git_history_revert` creates a new commit that undoes a selected commit, preserves ignored L2 auth files, publishes the changed owner root through the shared mutation path after the revert, uses backend-owned reverse-merge semantics so later non-overlapping edits can still revert cleanly, and should return `409` when overlapping changes keep the selected commit from applying cleanly to the current worktree
+- history endpoints delegate path normalization, permission checks, commit listing, diff reads, rollback, revert, and commit-loop suppression to `server/lib/customware/git_history.js`, and should preserve the underlying thrown error as `error.cause` when they translate backend failures into HTTP errors so router logging keeps the original stack
 - mutating endpoints should go through `server/runtime/request_mutations.js` so clustered workers perform the local write first, then commit changed logical paths back to the primary once before the response finishes
 - cross-worker follow-up freshness comes from `Space-State-Version` request or response fencing, not from waiting for every worker to acknowledge each write
 

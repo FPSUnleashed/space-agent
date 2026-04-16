@@ -107,6 +107,10 @@ async function handleApiModuleRequest(req, res, requestUrl, apiModule, contextOp
     });
   } catch (error) {
     const statusCode = Number(error && error.statusCode) || 500;
+
+    console.error(`[api] ${methodName} /api/${apiModule.endpointName} failed (${statusCode}).`);
+    console.error(error?.cause || error);
+
     sendJson(res, statusCode, {
       error: statusCode >= 500 ? "Internal server error" : error.message
     });

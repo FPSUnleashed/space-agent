@@ -50,7 +50,7 @@ The intended workflow is:
 
 API-mode agent prompts append the normal top-level skill catalog and the matching auto-loaded skill context, so the `memory` skill appears there automatically.
 
-Local browser-model prompt profiles stay intentionally smaller and still omit the full skill catalog, but they keep the always-on `memory` system skill so the prompt-backed memory workflow survives provider switches on both the onscreen and admin agent surfaces.
+The first-party onscreen and admin agent surfaces now keep the same full prepared prompt path in both API and local-provider modes, so the `memory` skill plus prompt-include-backed `~/memory/` files stay active across provider switches without a separate reduced local prompt profile.
 
 ## Related Docs
 
