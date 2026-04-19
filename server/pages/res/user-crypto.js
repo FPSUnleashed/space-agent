@@ -63,9 +63,9 @@ function concatBytes(...parts) {
 }
 
 export function encodeBase64Url(value) {
-  if (typeof Buffer?.from === "function") {
+  if (typeof globalThis.Buffer?.from === "function") {
     try {
-      return Buffer.from(toUint8Array(value))
+      return globalThis.Buffer.from(toUint8Array(value))
         .toString("base64")
         .replace(/\+/g, "-")
         .replace(/\//g, "_")
@@ -86,9 +86,9 @@ export function decodeBase64Url(value) {
   const normalized = String(value || "").replace(/-/g, "+").replace(/_/g, "/");
   const padding = normalized.length % 4 === 0 ? "" : "=".repeat(4 - (normalized.length % 4));
 
-  if (typeof Buffer?.from === "function") {
+  if (typeof globalThis.Buffer?.from === "function") {
     try {
-      return new Uint8Array(Buffer.from(normalized + padding, "base64"));
+      return new Uint8Array(globalThis.Buffer.from(normalized + padding, "base64"));
     } catch {
       // Fall back to browser-native base64 helpers when a partial Buffer polyfill exists.
     }

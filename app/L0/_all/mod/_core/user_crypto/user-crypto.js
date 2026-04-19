@@ -72,6 +72,21 @@ function warnOnce(message) {
   console.warn(normalizedMessage);
 }
 
+function logUserCryptoWarning(message, error, details) {
+  const normalizedMessage = String(message || "").trim();
+
+  if (!normalizedMessage) {
+    return;
+  }
+
+  if (details !== undefined) {
+    console.warn(`[userCrypto] ${normalizedMessage}`, details, error);
+    return;
+  }
+
+  console.warn(`[userCrypto] ${normalizedMessage}`, error);
+}
+
 function normalizeIdentity(identity = {}) {
   return {
     keyId: String(identity?.userCryptoKeyId || "").trim(),
@@ -138,8 +153,8 @@ function readCachedSessionState(identity) {
     ) {
       return cacheEntry;
     }
-  } catch {
-    // Ignore broken cache entries and continue with a locked session state.
+  } catch (error) {
+    logUserCryptoWarning("Failed to read the sessionStorage userCrypto cache.", error);
   }
 
   return null;
@@ -160,8 +175,8 @@ function persistCachedSessionState(entry) {
     }
 
     storageArea.setItem(cacheKey, JSON.stringify(entry));
-  } catch {
-    // Ignore browser storage failures and keep the runtime usable.
+  } catch (error) {
+    logUserCryptoWarning("Failed to persist the sessionStorage userCrypto cache.", error);
   }
 }
 
@@ -174,8 +189,8 @@ function clearCachedSessionState(identity = {}) {
 
   try {
     getStorageArea("sessionStorage")?.removeItem(cacheKey);
-  } catch {
-    // Ignore storage cleanup failures.
+  } catch (error) {
+    logUserCryptoWarning("Failed to clear the sessionStorage userCrypto cache.", error);
   }
 }
 
@@ -205,7 +220,8 @@ async function readLocalStorageSessionState(sessionKey) {
       }),
       exists: true
     };
-  } catch {
+  } catch (error) {
+    logUserCryptoWarning("Failed to read the localStorage userCrypto cache.", error);
     return {
       cacheEntry: null,
       exists: true
@@ -230,16 +246,16 @@ async function persistLocalStorageSessionState(entry, sessionKey) {
       sessionKey
     });
     storageArea.setItem(USER_CRYPTO_LOCAL_STORAGE_KEY, JSON.stringify(storageEntry));
-  } catch {
-    // Ignore localStorage persistence failures and keep the runtime usable.
+  } catch (error) {
+    logUserCryptoWarning("Failed to persist the localStorage userCrypto cache.", error);
   }
 }
 
 function clearLocalStorageSessionState() {
   try {
     getStorageArea("localStorage")?.removeItem(USER_CRYPTO_LOCAL_STORAGE_KEY);
-  } catch {
-    // Ignore storage cleanup failures.
+  } catch (error) {
+    logUserCryptoWarning("Failed to clear the localStorage userCrypto cache.", error);
   }
 }
 
@@ -260,8 +276,8 @@ async function syncLocalStorageSessionState(entry) {
     }
 
     await persistLocalStorageSessionState(entry, sessionKey);
-  } catch {
-    // Ignore localStorage sync failures and keep the current unlocked tab usable.
+  } catch (error) {
+    logUserCryptoWarning("Failed to sync the localStorage userCrypto cache.", error);
   }
 }
 
@@ -293,8 +309,8 @@ function readLoginBootstrapState(identity) {
     ) {
       return bootstrapEntry;
     }
-  } catch {
-    // Ignore broken bootstrap entries and continue without fallback provisioning.
+  } catch (error) {
+    logUserCryptoWarning("Failed to read the login-bootstrap userCrypto cache.", error);
   }
 
   return null;
@@ -309,8 +325,8 @@ function clearLoginBootstrapState(identity = {}) {
 
   try {
     getStorageArea("sessionStorage")?.removeItem(bootstrapKey);
-  } catch {
-    // Ignore storage cleanup failures.
+  } catch (error) {
+    logUserCryptoWarning("Failed to clear the login-bootstrap userCrypto cache.", error);
   }
 }
 
@@ -433,8 +449,8 @@ async function initializeUserCryptoInternal(options = {}) {
 
         return getUserCryptoStatus();
       }
-    } catch {
-      // Ignore localStorage restore failures and continue with the current remote state.
+    } catch (error) {
+      logUserCryptoWarning("Failed to restore userCrypto from localStorage.", error);
     }
   }
 

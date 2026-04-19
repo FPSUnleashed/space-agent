@@ -1180,11 +1180,47 @@
     <script src="/pages/res/browser-compat.js"></script>
     <script>
       (async function () {
-        const browserCompatibility = await window.SpaceBrowserCompatibility.check();
+        function logLoginError(label, error, details) {
+          const normalizedLabel = String(label || "Login shell failure").trim();
 
-        if (!browserCompatibility?.ok) {
-          return;
+          if (details !== undefined) {
+            console.error(`[space-login] ${normalizedLabel}`, details, error);
+            return;
+          }
+
+          console.error(`[space-login] ${normalizedLabel}`, error);
         }
+
+        function logLoginWarning(label, error, details) {
+          const normalizedLabel = String(label || "Login shell warning").trim();
+
+          if (details !== undefined) {
+            console.warn(`[space-login] ${normalizedLabel}`, details, error);
+            return;
+          }
+
+          console.warn(`[space-login] ${normalizedLabel}`, error);
+        }
+
+        window.addEventListener("error", (event) => {
+          logLoginError("Unhandled window error", event.error || event, {
+            colno: event.colno,
+            filename: event.filename,
+            lineno: event.lineno,
+            message: event.message
+          });
+        });
+
+        window.addEventListener("unhandledrejection", (event) => {
+          logLoginError("Unhandled promise rejection", event.reason || event);
+        });
+
+        try {
+          const browserCompatibility = await window.SpaceBrowserCompatibility.check();
+
+          if (!browserCompatibility?.ok) {
+            return;
+          }
 
       const ENTER_TAB_ACCESS_KEY = "space.enter.tab-access";
       const LOGIN_PREFIX = "space-login-v1";
@@ -1599,8 +1635,8 @@
 
         try {
           window.sessionStorage.setItem(cacheKey, JSON.stringify(cacheEntry));
-        } catch {
-          // Keep going so login still succeeds when sessionStorage is blocked.
+        } catch (error) {
+          logLoginWarning("Failed to persist the unlocked userCrypto session in sessionStorage.", error);
         }
 
         return {
@@ -1630,8 +1666,8 @@
             sessionKey
           });
           window.localStorage.setItem(storageKey, JSON.stringify(storageEntry));
-        } catch {
-          // Ignore localStorage persistence failures and keep sign-in working.
+        } catch (error) {
+          logLoginWarning("Failed to persist the unlocked userCrypto session in localStorage.", error);
         }
       }
 
@@ -1658,8 +1694,8 @@
 
         try {
           window.sessionStorage.setItem(bootstrapKey, JSON.stringify(bootstrapEntry));
-        } catch {
-          // Ignore sessionStorage failures and continue to the authenticated shell.
+        } catch (error) {
+          logLoginWarning("Failed to persist the userCrypto bootstrap handoff in sessionStorage.", error);
         }
       }
 
@@ -1704,8 +1740,8 @@
       function grantEnterTabAccess() {
         try {
           window.sessionStorage.setItem(ENTER_TAB_ACCESS_KEY, "1");
-        } catch {
-          // Ignore sessionStorage failures and continue to the authenticated shell.
+        } catch (error) {
+          logLoginWarning("Failed to grant same-tab /enter access in sessionStorage.", error);
         }
       }
 
@@ -1817,6 +1853,9 @@
           grantEnterTabAccess();
           window.location.replace("/");
         } catch (error) {
+          logLoginError("Sign-in failed", error, {
+            username: usernameInput.value.trim()
+          });
           setStatus(error.message || "Sign-in failed.", "error");
           syncButtonState(false);
           passwordInput.select();
@@ -1840,6 +1879,7 @@
           setGuestCredentials(guestAccount);
           setStatus("");
         } catch (error) {
+          logLoginError("Guest account creation failed", error);
           syncButtonState(false);
           setStatus(error.message || "Guest account creation failed.", "error");
         }
@@ -1912,6 +1952,16 @@
       } else {
         startIntroFloat();
       }
+        } catch (error) {
+          logLoginError("Login shell startup failed", error);
+
+          const statusNode = document.getElementById("status");
+
+          if (statusNode) {
+            statusNode.textContent = error?.message || "Login shell failed to start.";
+            statusNode.className = "status error";
+          }
+        }
       })();
     </script>
   </body>
