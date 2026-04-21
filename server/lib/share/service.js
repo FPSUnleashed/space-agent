@@ -729,15 +729,11 @@ async function cloneHostedCloudShareToGuest(options = {}) {
       spaceRoot: archiveHandle.spaceRoot,
       username: guestAccount.username
     });
-    const session = await options.auth.issueSessionForUser({
-      req: options.req,
-      username: guestAccount.username
-    });
     await updateHostedCloudShareLastUsed(options.projectRoot, options.runtimeParams, shareToken);
 
     return {
       importedSpace,
-      session,
+      password: guestAccount.password,
       username: guestAccount.username
     };
   } finally {

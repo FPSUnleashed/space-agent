@@ -39,7 +39,7 @@ Current rules:
 - successful login sets the `space_session` cookie through the auth service, writes the durable session verifier into `L2/<username>/meta/logins.json`, and returns a backend `sessionId` plus the `userCrypto` unlock payload for the authenticated browser session
 - if a legacy account cannot finish `userCrypto` provisioning during login, the server must fail the login instead of issuing the cookie and then forcing a logout
 - `guest_create` creates an `L2` guest user whenever runtime config allows guest accounts, even when `LOGIN_ALLOWED=false`, and must publish the concrete new auth files through the shared mutation path so `user_index` sees the account immediately
-- when `LOGIN_ALLOWED=false`, `login_challenge` still allows guest usernames when guest users are enabled, `login` still finalizes already-issued challenges, and `login_check` stays available so public guest-bootstrap or share flows can confirm that the new session is ready before they navigate
+- when `LOGIN_ALLOWED=false`, `login_challenge` still allows guest usernames when guest users are enabled, `login` still finalizes already-issued challenges, and `login_check` stays available for public session checks even though guest-bootstrap and hosted-share flows may still complete the normal background login challenge path without showing the `/login` form
 - in clustered runtime, login challenges are stored in the primary-only `login_challenge` state area while workers still validate cookies from replicated auth index shards
 
 App-file endpoints:
@@ -97,7 +97,7 @@ Current rules:
 - `cloud_share_create` requires both `CLOUD_SHARE_ALLOWED=true` and guest users enabled, and should fail when `CUSTOMWARE_PATH` is not configured because hosted shares are backend-owned server state, not app files
 - `cloud_share_info` returns the stored metadata needed by the public share shell, including whether the share payload is password-encrypted and the KDF or cipher parameters required for client-side decryption
 - `cloud_share_download` returns the raw stored ZIP bytes for a hosted share without unpacking it in the API handler
-- `cloud_share_clone` accepts a ZIP payload that may already have been decrypted in the browser, validates and extracts it into a unique `server/tmp/` directory, creates a fresh guest account, installs the imported space as `imported-N`, updates the share metadata `lastUsedAt`, issues the guest session cookie through the shared auth service, and returns the redirect URL for the new guest session
+- `cloud_share_clone` accepts a ZIP payload that may already have been decrypted in the browser, validates and extracts it into a unique `server/tmp/` directory, creates a fresh guest account, installs the imported space as `imported-N`, updates the share metadata `lastUsedAt`, and returns the guest credentials plus redirect URL that the public share shell uses to finish the normal `/api/login_challenge` plus `/api/login` background login flow
 - `space_import` is authenticated, accepts a raw ZIP request body, validates the archive through the shared hosted-share helper, and either replaces the current target space or installs a new `imported-N` destination when the caller keeps the current space instead of overwriting it
 - both `cloud_share_clone` and `space_import` must reuse `server/lib/share/service.js` for archive validation, extracted-folder checks, destination naming, and install logic instead of adding endpoint-local ZIP handling
 

@@ -31,6 +31,8 @@ Current public shell assets:
 - `res/space-backdrop.js`
 - `res/browser-compat.js`
 - `res/enter-guard.js`
+- `res/state-version.js`
+- `res/public-login.js`
 - `res/user-crypto.js`
 - `res/share-space.js`
 - `res/share-crypto.js`
@@ -69,6 +71,7 @@ Current public shell assets:
 - reads injected `meta[name="space-config"]` tags directly so guest-login UI and the password form can follow backend runtime parameters such as `ALLOW_GUEST_USERS` and `LOGIN_ALLOWED` without authenticated module imports
 - declares the shared Space Agent transparent-helmet favicon set, including ICO fallback, PNG browser and install icons, Apple touch icon, and the `Login | Space Agent` document title
 - runs the shared public-shell browser compatibility gate from `server/pages/res/browser-compat.js` before login logic starts, and renders a visible blocking message when the browser is missing required runtime features such as modern JavaScript syntax, module loading, fetch, storage, text codecs, or Web Crypto
+- uses the public `server/pages/res/state-version.js` helper on its background auth requests so successful sign-in can carry the latest replicated-state floor through the final same-tab redirect without a visible URL param
 - runs the per-user `userCrypto` provisioning or unlock step inside the same `/api/login_challenge` plus `/api/login` transaction using the public helper in `server/pages/res/user-crypto.js`; the helper must stay public because `/login` cannot depend on authenticated `/mod/...` assets, and its base64url handling must stay browser-safe even when a partial `Buffer` polyfill exists without Node's newer `base64url` codec alias
 - logs handled sign-in or guest-creation failures through `console.error`, logs non-fatal session or local storage persistence failures through `console.warn`, and installs top-level `error` plus `unhandledrejection` listeners so browser debugging keeps a raw console trail even when the shell also shows a user-facing status message
 - stores the unlocked `userCrypto` session cache in `sessionStorage`, keyed by username plus backend `sessionId`, and may also store one encrypted origin-scoped `localStorage` blob under `space.userCrypto.local`; the shell must fetch the current session-derived wrapping key from `/api/user_crypto_session_key` before writing that blob, and must never store that wrapping key at rest
@@ -99,7 +102,8 @@ Current public shell assets:
 - should keep the copy explicit and short: shared spaces open in a sandboxed guest environment instead of the visitor's own account
 - should keep password UI hidden unless the hosted share metadata declares browser-side encryption, and when a password is required it should use plain continue or show-space wording instead of preview-only jargon
 - should clear idle status text once the preview is ready so the steady state is just the preview plus the next real action
-- should wait for the new guest session to become visible through `login_check` before navigating, then grant the same-tab launcher-access marker so successful public share opens land directly in the imported guest space instead of bouncing back through `/enter` or `/login`
+- should treat share opens as a normal background guest login: after clone creates the guest account and imports the space, the public shell should run the same `/api/login_challenge` plus `/api/login` password-proof flow used by `/login`, using the returned guest credentials instead of a visible form
+- should grant the same-tab launcher-access marker before navigating, and should rely on the public state-version helper's `sessionStorage` plus short-lived cookie handoff so successful public share opens land directly in the imported guest space instead of bouncing back through `/enter` or `/login`
 - should surface clone failures in place instead of redirecting into half-initialized guest sessions
 
 `enter.html`:
@@ -138,7 +142,7 @@ Rules:
 - keep the mirrored public backdrop aligned with `_core/visual`
 - keep both the mirrored base canvas gradient and the mirrored star or glow scene fixed to the viewport so public-shell scrolling never drags them
 - if the shared backdrop visuals or runtime behavior change, review and update these mirrored files in the same session
-- `server/pages/res/share-space.js` owns the public hosted-share preview plus open flow, including browser-side ZIP preview reads for the public shell and the same-tab guest-session handoff after clone, and `server/pages/res/share-crypto.js` owns the browser-side password-based ZIP encryption and decryption used by both the public share shell and the authenticated spaces share modal
+- `server/pages/res/share-space.js` owns the public hosted-share preview plus open flow, including browser-side ZIP preview reads for the public shell, background guest login after clone, and the same-tab guest-session handoff into the imported space; `server/pages/res/public-login.js` owns the shared public-shell password-login helpers reused by hosted-share opens; `server/pages/res/state-version.js` owns the public-shell replicated-state floor persistence for same-origin requests and redirect handoffs; and `server/pages/res/share-crypto.js` owns the browser-side password-based ZIP encryption and decryption used by both the public share shell and the authenticated spaces share modal
 - keep public-shell assets under `server/pages/res/` instead of embedding large data blobs into page HTML
 - keep crawler and LLM discovery files at the root `server/pages/` level so they can be aliased directly to `/<filename>` without going through authenticated page routes
 - keep the shared social-preview banner in `server/pages/res/` so page-shell Open Graph and Twitter metadata never depend on `.github/` paths or external asset hosts

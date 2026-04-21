@@ -47,10 +47,10 @@ Current behavior:
 
 - every response advertises the worker's current replicated version through `Space-State-Version`
 - every response also advertises the handling worker number through `Space-Worker`
-- requests may send `Space-State-Version` as the minimum version they require before handling continues
+- requests may send `Space-State-Version` as the minimum version they require before handling continues, and top-level navigations reuse that same minimum version through the short-lived `space_state_version` cookie that browser helpers mirror from recent responses
 - when a worker is behind that requested version, the router waits briefly for local catch-up before dispatch
 - if the worker still cannot satisfy the requested version within the bounded wait, the router returns a retryable `503`
-- the frontend fetch wrapper is expected to carry the highest seen version on follow-up same-origin requests
+- the frontend fetch wrapper is expected to carry the highest seen version on follow-up same-origin requests, while the router clears cookie-sourced state-version handoffs once it has consumed them
 
 ## Request Context Contract
 

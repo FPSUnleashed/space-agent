@@ -116,5 +116,6 @@ export {
   ensureAuthenticatedRequestContext,
   getRequestContext,
   getRequestUser,
+  parseCookieHeader,
   runWithRequestContext
 };

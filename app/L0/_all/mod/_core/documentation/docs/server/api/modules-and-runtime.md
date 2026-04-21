@@ -26,7 +26,7 @@ Important notes:
 - `login_challenge` also reports `userCrypto` bootstrap state; legacy accounts with no `meta/user_crypto.json` receive a one-time provisioning share so the browser can generate the missing wrapped record before final login, while accounts whose wrapped record no longer has any recoverable server share are reported as `invalidated`
 - `login` completes both the auth session and the `userCrypto` bootstrap: it may persist a missing `user_crypto.json` record before issuing the cookie, and successful responses return a backend `sessionId` plus the `userCrypto` payload needed to unlock the current browser session
 - `guest_create` creates a guest `L2` user whenever runtime config allows guest accounts, even when `LOGIN_ALLOWED=false`
-- `login_check` stays available even when `LOGIN_ALLOWED=false` so public guest-bootstrap and hosted-share flows can confirm that the issued session is ready before they navigate
+- `login_check` stays available even when `LOGIN_ALLOWED=false` for public session checks, while guest-bootstrap and hosted-share flows may still complete the same background `login_challenge` plus `login` path without showing the `/login` form
 - in clustered runtime, login challenges are coordinated through the primary-only `login_challenge` area of the unified state system while workers still validate cookies and write `logins.json`
 
 ## Hosted Share And Import Endpoints
@@ -47,7 +47,7 @@ Important behaviors:
 - stored share metadata includes the token, create time, last-used time, payload size, and optional browser-side password-encryption parameters
 - `cloud_share_info` returns enough metadata for the public share shell to decide whether it must ask for a password before clone
 - `cloud_share_download` returns the stored ZIP bytes so the browser can decrypt password-protected shares before clone
-- `cloud_share_clone` validates the clear ZIP in a unique `server/tmp/` extraction directory, creates a fresh guest account, installs the result as `imported-N`, issues the guest session cookie, updates the share `lastUsedAt`, and returns the redirect URL for that guest session
+- `cloud_share_clone` validates the clear ZIP in a unique `server/tmp/` extraction directory, creates a fresh guest account, installs the result as `imported-N`, updates the share `lastUsedAt`, and returns the guest credentials plus redirect URL that the public share shell uses to finish the normal background login flow
 - authenticated `space_import` uses the same archive-validation path for local ZIP imports from the spaces modal, replacing the current space only when the caller explicitly chooses overwrite; otherwise the imported space is renamed to the next `imported-N` destination
 
 ## Module Endpoints

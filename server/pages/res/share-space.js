@@ -1,8 +1,12 @@
+import { grantEnterTabAccess, loginWithPassword } from "/pages/res/public-login.js";
 import { decryptSharePayload, ensureWebCrypto } from "/pages/res/share-crypto.js";
+import {
+  applyStateVersionRequestHeader,
+  getCurrentStateVersion,
+  observeStateVersionFromResponse
+} from "/pages/res/state-version.js";
 
 const CLOUD_SHARE_ROUTE_PATTERN = /^\/share\/space\/([A-Za-z0-9]{8})$/u;
-const ENTER_TAB_ACCESS_KEY = "space.enter.tab-access";
-const STATE_VERSION_HEADER = "Space-State-Version";
 const ZIP_EOCD_SIGNATURE = 0x06054b50;
 const ZIP_CENTRAL_HEADER_SIGNATURE = 0x02014b50;
 const ZIP_LOCAL_HEADER_SIGNATURE = 0x04034b50;
@@ -12,8 +16,6 @@ const ZIP_UTF8_FLAG = 0x0800;
 const ZIP_MAX_COMMENT_BYTES = 65535;
 const PREVIEW_WIDGET_PILL_LIMIT = 12;
 const DEFAULT_PREVIEW_ICON = "🛰️";
-const SESSION_READY_MAX_ATTEMPTS = 12;
-const SESSION_READY_RETRY_DELAY_MS = 250;
 
 const previewState = {
   archiveBytes: null,
@@ -68,10 +70,15 @@ function clearStatus() {
 }
 
 async function readJson(pathname) {
+  const headers = new Headers();
+  applyStateVersionRequestHeader(headers);
   const response = await fetch(pathname, {
+    cache: "no-store",
     credentials: "same-origin",
+    headers,
     method: "GET"
   });
+  observeStateVersionFromResponse(response);
   const payload = await response.json().catch(() => ({}));
 
   if (!response.ok) {
@@ -82,10 +89,15 @@ async function readJson(pathname) {
 }
 
 async function readShareArchive(token) {
+  const headers = new Headers();
+  applyStateVersionRequestHeader(headers);
   const response = await fetch("/api/cloud_share_download?token=" + encodeURIComponent(token), {
+    cache: "no-store",
     credentials: "same-origin",
+    headers,
     method: "GET"
   });
+  observeStateVersionFromResponse(response);
 
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}));
@@ -96,29 +108,24 @@ async function readShareArchive(token) {
 }
 
 async function cloneShareArchive(token, payloadBytes) {
+  const headers = new Headers({
+    "Content-Type": "application/zip"
+  });
+  applyStateVersionRequestHeader(headers);
   const response = await fetch("/api/cloud_share_clone?token=" + encodeURIComponent(token), {
     credentials: "same-origin",
     method: "POST",
-    headers: {
-      "Content-Type": "application/zip"
-    },
+    headers,
     body: payloadBytes
   });
+  observeStateVersionFromResponse(response);
   const payload = await response.json().catch(() => ({}));
 
   if (!response.ok) {
     throw new Error(payload.error || "Request failed.");
   }
 
-  return {
-    ...payload,
-    stateVersion: normalizeStateVersion(response.headers.get(STATE_VERSION_HEADER))
-  };
-}
-
-function normalizeStateVersion(value) {
-  const candidate = Math.floor(Number(value));
-  return Number.isFinite(candidate) && candidate > 0 ? candidate : 0;
+  return payload;
 }
 
 function togglePasswordPrompt(visible) {
@@ -148,12 +155,6 @@ function setButtonBusy(button, isBusy) {
 
   button.disabled = Boolean(isBusy);
   button.setAttribute("aria-busy", isBusy ? "true" : "false");
-}
-
-function wait(ms) {
-  return new Promise((resolve) => {
-    window.setTimeout(resolve, ms);
-  });
 }
 
 function escapeRegExp(value) {
@@ -558,50 +559,6 @@ function renderPreview(preview) {
   }
 }
 
-function grantTabAccess() {
-  try {
-    window.sessionStorage.setItem(ENTER_TAB_ACCESS_KEY, "1");
-  } catch {
-    // Ignore storage failures and continue navigation.
-  }
-}
-
-async function waitForGuestSessionReady(minimumStateVersion = 0) {
-  for (let attempt = 0; attempt < SESSION_READY_MAX_ATTEMPTS; attempt += 1) {
-    const headers = new Headers();
-
-    if (minimumStateVersion > 0) {
-      headers.set(STATE_VERSION_HEADER, String(minimumStateVersion));
-    }
-
-    const response = await fetch("/api/login_check", {
-      cache: "no-store",
-      credentials: "same-origin",
-      headers,
-      method: "GET"
-    });
-
-    if (response.status === 503) {
-      await wait(SESSION_READY_RETRY_DELAY_MS);
-      continue;
-    }
-
-    const payload = await response.json().catch(() => ({}));
-
-    if (!response.ok) {
-      throw new Error(String(payload.error || "Could not confirm the guest session."));
-    }
-
-    if (payload.authenticated === true) {
-      return payload;
-    }
-
-    await wait(SESSION_READY_RETRY_DELAY_MS);
-  }
-
-  throw new Error("The guest session did not become ready in time. Try opening the shared space again.");
-}
-
 async function ensureRawShareBytes(token) {
   if (previewState.rawShareBytes instanceof Uint8Array && previewState.rawShareBytes.length > 0) {
     return previewState.rawShareBytes;
@@ -641,9 +598,27 @@ async function openSharedSpace(token) {
 
   setStatus("Creating guest space...");
   const cloneResult = await cloneShareArchive(token, previewState.archiveBytes);
-  setStatus("Preparing guest session...");
-  await waitForGuestSessionReady(cloneResult.stateVersion);
-  grantTabAccess();
+  const username = String(cloneResult.username || "").trim();
+  const password = String(cloneResult.password || "");
+
+  if (!username || !password) {
+    throw new Error("The shared space could not create guest credentials.");
+  }
+
+  setStatus("Signing into guest space...");
+  await loginWithPassword({
+    minimumStateVersion: getCurrentStateVersion(),
+    onWarning(label, error) {
+      console.warn(`[share-space] ${label}`, error);
+    },
+    password,
+    username
+  });
+  grantEnterTabAccess({
+    onWarning(label, error) {
+      console.warn(`[share-space] ${label}`, error);
+    }
+  });
   setStatus("Opening shared space...", "ok");
   window.location.replace(String(cloneResult.redirectUrl || "/"));
 }

@@ -27,6 +27,7 @@ This module owns:
 - `js/modals.js`: the generic framework modal wrapper used for separately loaded modal documents that are not mounted as feature-owned native dialogs
 - `js/AlpineStore.js`: store registration helper used by the runtime and legacy modules
 - `js/chat-messages.js`: shared chat-request message folding helpers that collapse consecutive `user` or `assistant` payload turns into alternating messages with blank-line joins
+- `js/state-version.js`: browser-side replicated-state version tracking for same-origin fetches, per-tab persistence, and short-lived redirect handoff cookies
 - Alpine directives and magic helpers registered during bootstrap, including delayed-target `x-inject`
 - shared browser API helpers in `js/api-client.js`, `js/api.js`, `js/fetch-proxy.js`, `js/download.js`, and `js/proxy-url.js`
 - small shared parsing and utility helpers such as markdown frontmatter, the browser YAML wrapper, and token counting
@@ -69,7 +70,7 @@ Current API helper contract:
 - `gitHistoryPreview` accepts `operation: "travel" | "revert"` plus optional `filePath`; it returns affected-file metadata and, when a file is provided, the operation-specific patch
 - `js/api-client.js` also dedupes identical in-flight `extensions_load`, `file_read`, `file_info`, `file_list`, `file_paths`, and `user_self_info` requests by request shape so duplicate boot-time callers share one backend round trip
 - framework-managed external `fetch(...)` calls and `space.fetchExternal(...)` try the browser's direct request first; when a direct cross-origin attempt fails and the `/api/proxy` retry succeeds, the frontend remembers that origin for the rest of the runtime and routes later requests for the same origin through the backend immediately
-- same-origin `fetch(...)` calls made after the fetch proxy is installed automatically carry the highest observed `Space-State-Version`, and when the router returns its bounded retryable sync `503` with `Retry-After: 0`, `fetch-proxy.js` retries the request a few times before surfacing the failure to callers
+- same-origin `fetch(...)` calls made after the fetch proxy is installed automatically carry the highest observed `Space-State-Version`; `js/state-version.js` keeps that floor in per-tab `sessionStorage` and mirrors it into a short-lived same-origin cookie so immediate top-level redirects can reuse the same minimum version without query params, and when the router returns its bounded retryable sync `503` with `Retry-After: 0`, `fetch-proxy.js` retries the request a few times before surfacing the failure to callers
 - frontend modules and widgets must not hardcode third-party CORS proxy services; use direct `fetch(...)` or `space.fetchExternal(...)` for remote reads and reserve `space.proxy.buildUrl(...)` for cases that need a same-origin proxied URL string
 
 Current context helper contract:

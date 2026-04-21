@@ -1277,6 +1277,7 @@
         })
       );
       const textEncoder = new TextEncoder();
+      const stateVersionModulePromise = import("/pages/res/state-version.js");
       const userCryptoModulePromise = import("/pages/res/user-crypto.js");
       const form = document.getElementById("login-form");
       const loginActions = document.getElementById("login-actions");
@@ -1701,13 +1702,20 @@
       }
 
       async function postJson(path, body) {
+        const stateVersionModule = await stateVersionModulePromise;
+        const headers = new Headers({
+          "Content-Type": "application/json"
+        });
+
+        stateVersionModule.applyStateVersionRequestHeader(headers);
         const response = await fetch(path, {
+          cache: "no-store",
           method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
+          credentials: "same-origin",
+          headers,
           body: JSON.stringify(body)
         });
+        stateVersionModule.observeStateVersionFromResponse(response);
 
         const payload = await response.json().catch(() => ({}));
 
@@ -1719,9 +1727,17 @@
       }
 
       async function getJson(path) {
+        const stateVersionModule = await stateVersionModulePromise;
+        const headers = new Headers();
+
+        stateVersionModule.applyStateVersionRequestHeader(headers);
         const response = await fetch(path, {
-          method: "GET"
+          cache: "no-store",
+          method: "GET",
+          credentials: "same-origin",
+          headers
         });
+        stateVersionModule.observeStateVersionFromResponse(response);
 
         const payload = await response.json().catch(() => ({}));
 

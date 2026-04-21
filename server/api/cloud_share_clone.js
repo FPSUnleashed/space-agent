@@ -17,10 +17,8 @@ export async function post(context) {
 
   const cloneResult = await runTrackedMutation(context, async () =>
     cloneHostedCloudShareToGuest({
-      auth: context.auth,
       payloadBuffer: context.rawBody,
       projectRoot: context.projectRoot,
-      req: context.req,
       runtimeParams: context.runtimeParams,
       shareToken: context.query?.token
     })
@@ -28,11 +26,11 @@ export async function post(context) {
 
   return {
     headers: {
-      "Cache-Control": "no-store",
-      "Set-Cookie": context.auth.createSessionCookieHeader(cloneResult.session.sessionToken)
+      "Cache-Control": "no-store"
     },
     status: 200,
     body: {
+      password: cloneResult.password,
       redirectUrl: "/#/spaces?id=" + encodeURIComponent(cloneResult.importedSpace.spaceId),
       spaceId: cloneResult.importedSpace.spaceId,
       username: cloneResult.username

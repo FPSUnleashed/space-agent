@@ -55,7 +55,7 @@ Important behavior:
 - each stored session record also carries a backend-generated `sessionId`, which the browser uses to bind its session-scoped `userCrypto` cache to the active login
 - unsigned or expired session records are rejected
 - revocation deletes the stored session record and republishes the changed auth file through the shared mutation commit path
-- the auth service also exposes backend-owned trusted session issuance for server-controlled flows such as hosted-share guest clones, so those flows can create a session without pretending to be a password login
+- the auth service also exposes backend-owned trusted session issuance for server-controlled flows that already have authority to choose the target user, but public hosted-share opens now use the normal guest `login_challenge` plus `login` flow instead of that trusted-session shortcut
 - in clustered runtime, cookie validation happens on workers from replicated auth index shards, one-time login challenges live in the primary-only `login_challenge` area of the unified state system, and any debounced writable-layer Git history scheduling for auth-file writes is triggered only from the primary post-rebuild path
 
 ## User Crypto Contract

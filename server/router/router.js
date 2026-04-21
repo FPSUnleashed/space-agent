@@ -3,6 +3,7 @@ import { URL } from "node:url";
 import {
   createRequestContext,
   ensureAuthenticatedRequestContext,
+  parseCookieHeader,
   runWithRequestContext
 } from "./request_context.js";
 import { handlePageRequest } from "./pages_handler.js";
@@ -19,6 +20,7 @@ import {
 } from "../runtime/state_system.js";
 
 const STATE_WORKER_HEADER = "Space-Worker";
+const STATE_VERSION_COOKIE_NAME = "space_state_version";
 const STATE_VERSION_WAIT_TIMEOUT_MS = 1_000;
 
 function createParamsObject(searchParams) {
@@ -175,15 +177,27 @@ function installStateResponseHeaders(res, stateSync, workerNumber) {
 
 async function waitForRequestedStateVersion(req, res, stateSync) {
   if (!stateSync || typeof stateSync.waitForVersion !== "function") {
-    return true;
+    return {
+      satisfied: true,
+      usedStateVersionCookie: false
+    };
   }
 
-  const requestedVersion = normalizeStateVersionHeaderValue(
+  const requestedVersionFromHeader = normalizeStateVersionHeaderValue(
     req?.headers?.[String(STATE_VERSION_HEADER).toLowerCase()]
   );
+  const requestedVersionFromCookie = normalizeStateVersionHeaderValue(
+    parseCookieHeader(req?.headers?.cookie)?.[STATE_VERSION_COOKIE_NAME]
+  );
+  const usedStateVersionCookie = requestedVersionFromHeader <= 0 && requestedVersionFromCookie > 0;
+  const requestedVersion =
+    requestedVersionFromHeader > 0 ? requestedVersionFromHeader : requestedVersionFromCookie;
 
   if (requestedVersion <= 0) {
-    return true;
+    return {
+      satisfied: true,
+      usedStateVersionCookie: false
+    };
   }
 
   const waitResult = await stateSync.waitForVersion(requestedVersion, {
@@ -191,7 +205,10 @@ async function waitForRequestedStateVersion(req, res, stateSync) {
   });
 
   if (waitResult?.satisfied) {
-    return true;
+    return {
+      satisfied: true,
+      usedStateVersionCookie
+    };
   }
 
   sendJson(
@@ -205,7 +222,58 @@ async function waitForRequestedStateVersion(req, res, stateSync) {
     }
   );
 
-  return false;
+  return {
+    satisfied: false,
+    usedStateVersionCookie
+  };
+}
+
+function appendSetCookieHeader(res, value) {
+  if (!value) {
+    return;
+  }
+
+  const existingValue = res.getHeader("Set-Cookie");
+
+  if (existingValue === undefined) {
+    res.setHeader("Set-Cookie", value);
+    return;
+  }
+
+  if (Array.isArray(existingValue)) {
+    res.setHeader("Set-Cookie", [...existingValue, value]);
+    return;
+  }
+
+  res.setHeader("Set-Cookie", [existingValue, value]);
+}
+
+function isSecureRequest(req) {
+  if (req?.socket?.encrypted) {
+    return true;
+  }
+
+  const forwardedProto = String(req?.headers?.["x-forwarded-proto"] || "")
+    .split(",")[0]
+    .trim()
+    .toLowerCase();
+
+  return forwardedProto === "https";
+}
+
+function createClearedStateVersionCookieHeader(req) {
+  const parts = [
+    `${encodeURIComponent(STATE_VERSION_COOKIE_NAME)}=`,
+    "Max-Age=0",
+    "Path=/",
+    "SameSite=Lax"
+  ];
+
+  if (isSecureRequest(req)) {
+    parts.push("Secure");
+  }
+
+  return parts.join("; ");
 }
 
 function createRequestHandler(options) {
@@ -234,12 +302,18 @@ function createRequestHandler(options) {
 
   return async function requestHandler(req, res) {
     installStateResponseHeaders(res, stateSync, workerNumber);
+    const requestUrl = new URL(req.url, `http://${req.headers.host || `${host}:${port}`}`);
 
-    if (!(await waitForRequestedStateVersion(req, res, stateSync))) {
+    const stateVersionWait = await waitForRequestedStateVersion(req, res, stateSync);
+
+    if (!stateVersionWait.satisfied) {
       return;
     }
 
-    const requestUrl = new URL(req.url, `http://${req.headers.host || `${host}:${port}`}`);
+    if (stateVersionWait.usedStateVersionCookie) {
+      appendSetCookieHeader(res, createClearedStateVersionCookieHeader(req));
+    }
+
     const requestContext = createRequestContext({
       auth,
       req,

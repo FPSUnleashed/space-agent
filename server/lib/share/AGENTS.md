@@ -54,7 +54,7 @@ Current guest-clone rules:
 
 - public share links are opened by first downloading the hosted ZIP, then decrypting it in the browser when the share is password-protected, then posting the clear ZIP bytes to the clone endpoint
 - clone-time validation runs before the guest user is created, so invalid or empty shares do not leave behind orphaned guest accounts
-- successful clones create a fresh randomized `guest_...` user, install the shared space as the next `imported-N` destination for that guest, issue a guest session through the auth service, and update the hosted share metadata `lastUsedAt`
+- successful clones create a fresh randomized `guest_...` user, install the shared space as the next `imported-N` destination for that guest, return that guest's temporary credentials to the public share shell for normal background login, and update the hosted share metadata `lastUsedAt`
 
 ## Development Guidance
 
