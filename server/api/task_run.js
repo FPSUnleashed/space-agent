@@ -11,8 +11,9 @@ const SYSTEM_PROMPT_PATH = path.join(
   'onscreen_agent', 'prompts', 'system-prompt.md'
 );
 
-const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
-const DEFAULT_MODEL = 'anthropic/claude-sonnet-4';
+// Default to Z.AI (ZhipuAI) API
+const DEFAULT_API_URL = 'https://open.bigmodel.cn/api/paas/v4/chat/completions';
+const DEFAULT_MODEL = 'glm-5.1';
 const MAX_STEPS_HARD_LIMIT = 50;
 const CODE_EXECUTION_TIMEOUT_MS = 30_000;
 const LLM_REQUEST_TIMEOUT_MS = 120_000;
@@ -110,18 +111,16 @@ function createSandbox() {
   return { sandbox, output };
 }
 
-async function callLlm(apiKey, model, messages) {
+async function callLlm(apiUrl, apiKey, model, messages) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), LLM_REQUEST_TIMEOUT_MS);
 
   try {
-    const response = await fetch(OPENROUTER_API_URL, {
+    const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${apiKey}`,
-        'HTTP-Referer': 'https://space-agent.local',
-        'X-Title': 'Space Agent Task Runner',
       },
       body: JSON.stringify({
         model,
@@ -141,18 +140,22 @@ async function callLlm(apiKey, model, messages) {
 
     const data = await response.json();
 
-    if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+    // Handle both OpenAI and ZhipuAI response formats
+    const content = data.choices?.[0]?.message?.content
+      || data.choices?.[0]?.text
+      || data.output?.text;
+
+    if (!content) {
       throw createHttpError('Invalid LLM API response structure', 502);
     }
 
-    return data.choices[0].message.content;
+    return content;
   } finally {
     clearTimeout(timeoutId);
   }
 }
 
 function isTaskComplete(llmResponse, stepResults) {
-  // Heuristic: if the last LLM response contains no code blocks, the agent is done
   const blocks = parseCodeBlocks(llmResponse);
   return blocks.length === 0 && stepResults.length > 0;
 }
@@ -163,6 +166,7 @@ export async function post(context) {
   const task = body.task;
   const apiKey = body.api_key;
   const model = body.model || DEFAULT_MODEL;
+  const apiUrl = body.api_url || DEFAULT_API_URL;
   const maxSteps = Math.min(
     Math.max(Number(body.max_steps) || 10, 1),
     MAX_STEPS_HARD_LIMIT
@@ -193,14 +197,13 @@ export async function post(context) {
     console.log(`[task_run] Step ${step + 1}/${maxSteps}`);
 
     // Call the LLM
-    const llmResponse = await callLlm(apiKey, model, messages);
+    const llmResponse = await callLlm(apiUrl, apiKey, model, messages);
     finalResponse = llmResponse;
 
     // Parse code blocks from the response
     const codeBlocks = parseCodeBlocks(llmResponse);
 
     if (codeBlocks.length === 0) {
-      // No code blocks means the agent has finished its response
       console.log(`[task_run] No code blocks found at step ${step + 1}, task complete.`);
       break;
     }
@@ -240,7 +243,6 @@ export async function post(context) {
       });
     }
 
-
     // Feed the LLM response and execution results back into the conversation
     messages.push({ role: 'assistant', content: llmResponse });
 
@@ -266,7 +268,7 @@ export async function post(context) {
     }
   }
 
-  // Extract clean result text (staging sentence + final answer, minus code blocks)
+  // Extract clean result text (minus code blocks)
   let resultText = finalResponse
     .split('\n')
     .filter(line => !line.includes('_____javascript'))
