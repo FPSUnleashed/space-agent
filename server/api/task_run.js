@@ -65,7 +65,9 @@ function parseCodeBlocks(text) {
 
 async function executeCodeBlock(code, sandbox) {
   const context = vm.createContext(sandbox);
-  const script = new vm.Script(code, { filename: 'space-agent-task.js' });
+  // Wrap in async IIFE so top-level return/await work
+  const wrappedCode = `(async () => {\n${code}\n})()`;
+  const script = new vm.Script(wrappedCode, { filename: 'space-agent-task.js' });
   const result = await script.runInContext(context, { timeout: CODE_EXECUTION_TIMEOUT_MS });
   return result;
 }
