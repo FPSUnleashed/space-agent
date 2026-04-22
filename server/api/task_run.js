@@ -193,96 +193,104 @@ export async function post(context) {
   let finalResponse = '';
   let codeBlocksExecuted = 0;
   let stepsTaken = 0;
+  let crashed = false;
+  let crashError = null;
 
-  for (let step = 0; step < maxSteps; step++) {
-    stepsTaken++;
-    console.log(`[task_run] Step ${step + 1}/${maxSteps}`);
+  try {
+    for (let step = 0; step < maxSteps; step++) {
+      stepsTaken++;
+      console.log(`[task_run] Step ${step + 1}/${maxSteps}`);
 
-    // Call the LLM
-    const llmResponse = await callLlm(apiUrl, apiKey, model, messages);
-    finalResponse = llmResponse;
+      // Call the LLM
+      const llmResponse = await callLlm(apiUrl, apiKey, model, messages);
+      finalResponse = llmResponse;
 
-    // Parse code blocks from the response
-    const codeBlocks = parseCodeBlocks(llmResponse);
+      // Parse code blocks from the response
+      const codeBlocks = parseCodeBlocks(llmResponse);
 
-    // Log the LLM reasoning (text without code blocks)
-    const reasoning = llmResponse
-      .split('\n')
-      .filter(line => !line.includes('_____javascript'))
-      .join('\n')
-      .trim();
+      // Log the LLM reasoning (text without code blocks)
+      const reasoning = llmResponse
+        .split('\n')
+        .filter(line => !line.includes('_____javascript'))
+        .join('\n')
+        .trim();
 
-    stepLog.push({
-      step: step + 1,
-      type: 'thinking',
-      reasoning: reasoning.substring(0, 1000),
-    });
-
-    if (codeBlocks.length === 0) {
-      console.log(`[task_run] No code blocks found at step ${step + 1}, task complete.`);
-      break;
-    }
-
-    // Execute each code block and collect results
-    const executionResults = [];
-
-    for (let i = 0; i < codeBlocks.length; i++) {
-      const { sandbox, output } = createSandbox();
-      const code = codeBlocks[i];
-
-      console.log(`[task_run] Executing code block ${i + 1}/${codeBlocks.length} (${code.length} chars)`);
-
-      let execResult;
-      let execError = null;
-
-      try {
-        execResult = await executeCodeBlock(code, sandbox);
-      } catch (err) {
-        execError = err.message || String(err);
-        console.error(`[task_run] Code block execution error: ${execError}`);
-      }
-
-      const result = {
-        block_index: i,
-        output: output.join('\n'),
-        result: execResult !== undefined ? String(execResult) : undefined,
-        error: execError,
-      };
-
-      executionResults.push(result);
-      codeBlocksExecuted++;
       stepLog.push({
         step: step + 1,
-        type: 'code',
-        block: i + 1,
-        code: code.substring(0, 2000),
-        ...result,
+        type: 'thinking',
+        reasoning: reasoning.substring(0, 1000),
       });
+
+      if (codeBlocks.length === 0) {
+        console.log(`[task_run] No code blocks found at step ${step + 1}, task complete.`);
+        break;
+      }
+
+      // Execute each code block and collect results
+      const executionResults = [];
+
+      for (let i = 0; i < codeBlocks.length; i++) {
+        const { sandbox, output } = createSandbox();
+        const code = codeBlocks[i];
+
+        console.log(`[task_run] Executing code block ${i + 1}/${codeBlocks.length} (${code.length} chars)`);
+
+        let execResult;
+        let execError = null;
+
+        try {
+          execResult = await executeCodeBlock(code, sandbox);
+        } catch (err) {
+          execError = err.message || String(err);
+          console.error(`[task_run] Code block execution error: ${execError}`);
+        }
+
+        const result = {
+          block_index: i,
+          output: output.join('\n'),
+          result: execResult !== undefined ? String(execResult) : undefined,
+          error: execError,
+        };
+
+        executionResults.push(result);
+        codeBlocksExecuted++;
+        stepLog.push({
+          step: step + 1,
+          type: 'code',
+          block: i + 1,
+          code: code.substring(0, 2000),
+          ...result,
+        });
+      }
+
+      // Feed the LLM response and execution results back into the conversation
+      messages.push({ role: 'assistant', content: llmResponse });
+
+      const resultSummary = executionResults
+        .map((r, idx) => {
+          const parts = [`Block ${idx + 1}:`];
+          if (r.output) parts.push(`  Output: ${r.output}`);
+          if (r.result !== undefined) parts.push(`  Result: ${r.result}`);
+          if (r.error) parts.push(`  Error: ${r.error}`);
+          return parts.join('\n');
+        })
+        .join('\n');
+
+      messages.push({
+        role: 'user',
+        content: `Execution results:\n${resultSummary}\n\nContinue if needed, or provide your final answer.`,
+      });
+
+      // Check if the task appears complete
+      if (isTaskComplete(llmResponse, stepLog)) {
+        console.log(`[task_run] Task detected as complete at step ${step + 1}.`);
+        break;
+      }
     }
-
-    // Feed the LLM response and execution results back into the conversation
-    messages.push({ role: 'assistant', content: llmResponse });
-
-    const resultSummary = executionResults
-      .map((r, idx) => {
-        const parts = [`Block ${idx + 1}:`];
-        if (r.output) parts.push(`  Output: ${r.output}`);
-        if (r.result !== undefined) parts.push(`  Result: ${r.result}`);
-        if (r.error) parts.push(`  Error: ${r.error}`);
-        return parts.join('\n');
-      })
-      .join('\n');
-
-    messages.push({
-      role: 'user',
-      content: `Execution results:\n${resultSummary}\n\nContinue if needed, or provide your final answer.`,
-    });
-
-    // Check if the task appears complete
-    if (isTaskComplete(llmResponse, stepLog)) {
-      console.log(`[task_run] Task appears complete after step ${step + 1}.`);
-      break;
-    }
+  } catch (err) {
+    crashed = true;
+    crashError = err.message || String(err);
+    console.error(`[task_run] Crashed at step ${stepsTaken}: ${crashError}`);
   }
 
   // Extract clean result text (minus code blocks)
@@ -293,17 +301,18 @@ export async function post(context) {
     .trim();
 
   if (!resultText) {
-    resultText = 'Task completed.';
+    resultText = crashed ? `Task crashed: ${crashError}` : 'Task completed.';
   }
 
   return {
     status: 200,
     body: {
-      success: true,
+      success: !crashed,
       result: resultText,
       steps: stepsTaken,
       code_blocks_executed: codeBlocksExecuted,
       step_log: stepLog,
+      ...(crashed ? { error: crashError, partial: true } : {}),
     }
   };
 }
