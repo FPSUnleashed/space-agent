@@ -205,6 +205,19 @@ export async function post(context) {
     // Parse code blocks from the response
     const codeBlocks = parseCodeBlocks(llmResponse);
 
+    // Log the LLM reasoning (text without code blocks)
+    const reasoning = llmResponse
+      .split('\n')
+      .filter(line => !line.includes('_____javascript'))
+      .join('\n')
+      .trim();
+
+    stepLog.push({
+      step: step + 1,
+      type: 'thinking',
+      reasoning: reasoning.substring(0, 1000),
+    });
+
     if (codeBlocks.length === 0) {
       console.log(`[task_run] No code blocks found at step ${step + 1}, task complete.`);
       break;
@@ -240,7 +253,9 @@ export async function post(context) {
       codeBlocksExecuted++;
       stepLog.push({
         step: step + 1,
+        type: 'code',
         block: i + 1,
+        code: code.substring(0, 2000),
         ...result,
       });
     }
@@ -287,7 +302,8 @@ export async function post(context) {
       success: true,
       result: resultText,
       steps: stepsTaken,
-      code_blocks_executed: codeBlocksExecuted
+      code_blocks_executed: codeBlocksExecuted,
+      step_log: stepLog,
     }
   };
 }
