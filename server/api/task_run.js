@@ -12,7 +12,7 @@ const SYSTEM_PROMPT_PATH = path.join(
 );
 
 // Default to Z.AI (ZhipuAI) API
-const DEFAULT_API_URL = 'https://open.bigmodel.cn/api/paas/v4/chat/completions';
+const DEFAULT_API_URL = 'https://api.z.ai/api/coding/paas/v4/chat/completions';
 const DEFAULT_MODEL = 'glm-5.1';
 const MAX_STEPS_HARD_LIMIT = 50;
 const CODE_EXECUTION_TIMEOUT_MS = 30_000;
